@@ -33,31 +33,17 @@
     .hide{ display:none !important }
     .toast{ position:fixed; right:12px; top:12px; background:#111827; color:#fff; padding:.7rem 1rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:60; transform:translateY(-10px); opacity:0; transition:all .22s ease }
 
-    /* ===== Global Loader Overlay ===== */
-    .loader-overlay{
-      position:fixed; inset:0; z-index:50;
-      background:rgba(15,23,42,.25);
-      backdrop-filter:saturate(140%) blur(4px);
-      display:flex; align-items:center; justify-content:center;
-    }
-    .loader-box{
-      background:rgba(255,255,255,.9); border:1px solid var(--line);
-      border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:.75rem;
-      box-shadow:0 10px 30px rgba(0,0,0,.12)
-    }
-    .spinner{
-      width:28px; height:28px; border-radius:999px;
-      border:3px solid #e5e7eb; border-top-color:#111827;
-      animation:spin .8s linear infinite;
-    }
+    /* Global Loader */
+    .loader-overlay{ position:fixed; inset:0; z-index:50; background:rgba(15,23,42,.25); backdrop-filter:saturate(140%) blur(4px); display:flex; align-items:center; justify-content:center; }
+    .loader-box{ background:rgba(255,255,255,.9); border:1px solid var(--line); border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:.75rem; box-shadow:0 10px 30px rgba(0,0,0,.12) }
+    .spinner{ width:28px; height:28px; border-radius:999px; border:3px solid #e5e7eb; border-top-color:#111827; animation:spin .8s linear infinite }
     @keyframes spin{ to{ transform:rotate(360deg) } }
   </style>
 </head>
 <body class="bg-app">
-  <!-- ===== Toast ===== -->
   <div id="toast" class="toast"></div>
 
-  <!-- ===== Global Loader (hidden by default) ===== -->
+  <!-- Loader -->
   <div id="loader" class="loader-overlay hide" aria-live="polite" aria-busy="true">
     <div class="loader-box">
       <div class="spinner" aria-hidden="true"></div>
@@ -65,7 +51,6 @@
     </div>
   </div>
 
-  <!-- ===== Header ===== -->
   <header class="sticky-header">
     <div class="container px-4 py-3 flex items-center justify-between">
       <div class="font-bold text-lg">บัญชีร้านอาหาร · เชื่อม GAS (JSONP)</div>
@@ -75,9 +60,7 @@
     </div>
   </header>
 
-  <!-- ===== Content ===== -->
   <main class="container px-4 pb-28 pt-4">
-    <!-- Date filters -->
     <section class="card p-3 mb-4">
       <div class="flex items-center gap-2 overflow-x-auto">
         <button id="rToday" class="tab-btn">วันนี้</button>
@@ -252,7 +235,7 @@
     </section>
   </main>
 
-  <!-- Bottom Nav (ลบปุ่ม data ที่ไม่มีหน้า) -->
+  <!-- Bottom Nav -->
   <nav class="bottom-nav">
     <div class="container grid grid-cols-4">
       <button class="nav-item active" data-page="dashboard"><span>📊</span><span>ภาพรวม</span></button>
@@ -274,11 +257,8 @@
     const $ = (s)=> document.querySelector(s);
     const $$= (s)=> Array.from(document.querySelectorAll(s));
     function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
-
-    // robust date parse (safe from TZ drift)
     const parseISODate = (s)=> new Date(String(s).slice(0,10)+'T12:00:00');
 
-    // Global loader + button lock
     const Loader = {
       el: null, textEl: null, count: 0, lockBtns: [],
       init(){ this.el = $('#loader'); this.textEl = $('#loaderText'); this.lockBtns = $$('button, input[type="submit"]'); },
@@ -286,56 +266,39 @@
       hide(){ this.count = Math.max(0, this.count-1); if(this.count===0){ this.el.classList.add('hide'); this.textEl.textContent='กำลังโหลดข้อมูล…'; this.lockBtns.forEach(b=>b.removeAttribute('disabled')); } }
     };
 
-    /* ============== JSONP ONLY API (with timeout) ============== */
+    /* ============== JSONP API (with timeout) ============== */
     function apiCall(body, opts={}){
       if(!GAS_URL || GAS_URL.includes('XXXXXXXX')) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า GAS_URL'));
       if(!body || !body.action) return Promise.reject(new Error('action required'));
-
       Loader.show(opts.message || 'กำลังประมวลผล…');
-
       return new Promise((resolve,reject)=>{
         const cb = 'cb_' + Math.random().toString(36).slice(2,9);
-        const params = new URLSearchParams();
-        params.set('action', body.action);
-        if(body.id) params.set('id', body.id);
-        if(body.range && body.range.start && body.range.end){
-          params.set('rangeStart', body.range.start);
-          params.set('rangeEnd', body.range.end);
-        }
-        if(body.payload) params.set('payload', JSON.stringify(body.payload));
-        params.set('callback', cb);
+        const p = new URLSearchParams();
+        p.set('action', body.action);
+        if(body.id) p.set('id', body.id);
+        if(body.range && body.range.start && body.range.end){ p.set('rangeStart', body.range.start); p.set('rangeEnd', body.range.end); }
+        if(body.payload) p.set('payload', JSON.stringify(body.payload));
+        p.set('callback', cb);
 
         const s = document.createElement('script');
-        let timeoutId = null;
-        const cleanup = ()=>{
-          try{ if(timeoutId) clearTimeout(timeoutId); }catch(_){}
-          try{ delete window[cb]; }catch(_){}
-          try{ s.remove(); }catch(_){}
-          Loader.hide();
-        };
+        let timer=null;
+        const cleanup=()=>{ try{clearTimeout(timer);}catch(_){} try{delete window[cb];}catch(_){} try{s.remove();}catch(_){}}; 
 
-        window[cb] = (resp)=>{
-          cleanup();
-          if(!resp || !resp.ok) return reject(new Error((resp && resp.error) || 'JSONP error'));
-          resolve(resp.data);
-        };
-
-        s.src = GAS_URL + '?' + params.toString();
-        s.onerror = ()=>{ cleanup(); reject(new Error('JSONP load error')); };
+        window[cb] = (resp)=>{ cleanup(); Loader.hide(); if(!resp||!resp.ok) return reject(new Error((resp&&resp.error)||'JSONP error')); resolve(resp.data); };
+        s.onerror = ()=>{ cleanup(); Loader.hide(); reject(new Error('JSONP load error')); };
+        s.src = GAS_URL + '?' + p.toString();
         document.body.appendChild(s);
-
-        const t = Number(opts.timeoutMs||20000);
-        timeoutId = setTimeout(()=>{ cleanup(); reject(new Error('Request timed out')); }, t);
+        timer = setTimeout(()=>{ cleanup(); Loader.hide(); reject(new Error('Request timed out')); }, opts.timeoutMs||20000);
       });
     }
 
-    /* ============== State (แคชอ่าน) ============== */
+    /* ============== State ============== */
     const CACHE_KEY = 'foodacc_cache_v2';
     const State = { menus:[], sales:[], expenses:[], settings:{activePage:'dashboard', range:'month', start:null, end:null} };
     function loadCache(){ const raw=localStorage.getItem(CACHE_KEY); if(raw){ try{ Object.assign(State, JSON.parse(raw)); }catch(e){} } }
     function saveCache(){ localStorage.setItem(CACHE_KEY, JSON.stringify(State)); }
 
-    /* ============== Date Range & Helpers ============== */
+    /* ============== Date Helpers ============== */
     function setQuickRange(type){
       const now=new Date(); let start,end=new Date();
       if(type==='today') start = new Date();
@@ -352,37 +315,13 @@
       return d>=s && d<=e;
     }
 
-    /* ============== Charts (bounded, safe) ============== */
+    /* ============== Charts ============== */
     let charts = { sales:null, top:null, breakdown:null };
     const destroyChart = (k)=>{ if(charts[k]){ try{ charts[k].destroy(); }catch(_){} charts[k]=null; } };
-    const boundedMax = (arr)=>{ const nums = (arr||[]).map(n=>Number(n)||0); const m = Math.max(0,...nums); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
-    function lineChart(sel, labels, data){
-      const cv = document.querySelector(sel); if(!cv) return;
-      destroyChart('sales');
-      charts.sales = new Chart(cv.getContext('2d'), {
-        type:'line',
-        data:{ labels, datasets:[{ label:'ยอดขายรายวัน', data, tension:.25, pointRadius:2 }] },
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
-      });
-    }
-    function barChart(sel, labels, data){
-      const cv = document.querySelector(sel); if(!cv) return;
-      destroyChart('top');
-      charts.top = new Chart(cv.getContext('2d'), {
-        type:'bar',
-        data:{ labels, datasets:[{ label:'จำนวนที่ขาย', data }] },
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
-      });
-    }
-    function doughnutChart(sel, labels, data){
-      const cv = document.querySelector(sel); if(!cv) return;
-      destroyChart('breakdown');
-      charts.breakdown = new Chart(cv.getContext('2d'), {
-        type:'doughnut',
-        data:{ labels, datasets:[{ data }] },
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{ position:'bottom' } } }
-      });
-    }
+    const boundedMax = (arr)=>{ const nums=(arr||[]).map(n=>Number(n)||0); const m=Math.max(0,...nums); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
+    function lineChart(sel, labels, data){ const cv=$(sel); if(!cv) return; destroyChart('sales'); charts.sales=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'ยอดขายรายวัน',data,tension:.25,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function barChart(sel, labels, data){ const cv=$(sel); if(!cv) return; destroyChart('top'); charts.top=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{label:'จำนวนที่ขาย',data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function doughnutChart(sel, labels, data){ const cv=$(sel); if(!cv) return; destroyChart('breakdown'); charts.breakdown=new Chart(cv.getContext('2d'),{type:'doughnut',data:{labels,datasets:[{data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom'}}}}); }
 
     /* ============== Render ============== */
     function computeSummary(){
@@ -394,10 +333,10 @@
         const price=Number(m? m.price:0)||0, cost=Number(m? m.cost:0)||0;
         const qty=Math.max(0, Number(s.qty||0)||0);
         const discount=Math.max(0, Number(s.discount||0)||0);
-        const gross=(price*qty) - discount;
+        const gross=(price*qty)-discount;
         const cogs =(cost*qty);
         salesTotal+=gross; cogsTotal+=cogs;
-        const key = String(s.date).slice(0,10);
+        const key=String(s.date).slice(0,10);
         perDay[key]=(perDay[key]||0)+gross;
         const name=m? m.name:'(ลบเมนูแล้ว)'; perMenu[name]=(perMenu[name]||0)+qty;
       }
@@ -426,14 +365,13 @@
 
       const menuNames=Object.keys(perMenu); const menuQtys=menuNames.map(k=>perMenu[k]);
       barChart('#topMenuChart', menuNames, menuQtys);
-
       doughnutChart('#breakdownChart', ['COGS','ค่าใช้จ่ายอื่น','กำไรสุทธิ'], [cogsTotal, expTotal, Math.max(netProfit,0)]);
     }
     function renderSalesList(){
       const list=$('#salesList'); list.innerHTML='';
       const sorted=[...State.sales].sort((a,b)=> String(b.date).slice(0,10).localeCompare(String(a.date).slice(0,10)));
       if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีรายการขาย</div>`; $('#salesCount').textContent='0 รายการ'; return; }
-      sorted.slice(0,80).forEach(s=>{
+      sorted.slice(0,120).forEach(s=>{
         const m=State.menus.find(x=>x.id===s.menuId);
         const price=Number(m?m.price:0)||0, cost=Number(m?m.cost:0)||0;
         const qty=Math.max(0, Number(s.qty||0)||0);
@@ -463,7 +401,7 @@
       const list=$('#expList'); list.innerHTML='';
       const sorted=[...State.expenses].sort((a,b)=> String(b.date).slice(0,10).localeCompare(String(a.date).slice(0,10)));
       if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีค่าใช้จ่าย</div>`; $('#expCount').textContent='0 รายการ'; return; }
-      sorted.slice(0,80).forEach(e=>{
+      sorted.slice(0,120).forEach(e=>{
         const amt = Math.max(0, Number(e.amount||0)||0);
         const row=document.createElement('div');
         row.className='flex items-center justify-between border-b py-2';
@@ -505,23 +443,35 @@
       State.menus.forEach(m=>{ const op=document.createElement('option'); op.value=m.id; op.textContent=m.name; sel.appendChild(op); });
     }
 
-    /* ============== Sync ============== */
+    /* ============== Sync (with server-range fallback) ============== */
     let syncing=false;
+    async function fetchSalesWithFallback(range){
+      try{ return await apiCall({action:'sales_list', range},{message:'โหลดยอดขาย…'}); }
+      catch(_){ return await apiCall({action:'sales_list'},{message:'โหลดยอดขายทั้งหมด…'}); }
+    }
+    async function fetchExpensesWithFallback(range){
+      try{ return await apiCall({action:'expenses_list', range},{message:'โหลดค่าใช้จ่าย…'}); }
+      catch(_){ return await apiCall({action:'expenses_list'},{message:'โหลดค่าใช้จ่ายทั้งหมด…'}); }
+    }
+
     async function syncAll(){
       if(syncing) return;
       syncing=true;
       try{
         const range = { start: $('#startDate').value || State.settings.start || todayStr(),
                         end:   $('#endDate').value   || State.settings.end   || todayStr() };
-        const menus = await apiCall({action:'menus_list'},{message:'กำลังโหลดเมนู…'});
+
+        const menus = await apiCall({action:'menus_list'},{message:'โหลดเมนู…'});
         const [sales, expenses] = await Promise.all([
-          apiCall({action:'sales_list', range},{message:'กำลังโหลดยอดขาย…'}),
-          apiCall({action:'expenses_list', range},{message:'กำลังโหลดค่าใช้จ่าย…'})
+          fetchSalesWithFallback(range),
+          fetchExpensesWithFallback(range)
         ]);
+
         State.menus = Array.isArray(menus)? menus: [];
         State.sales = Array.isArray(sales)? sales: [];
         State.expenses = Array.isArray(expenses)? expenses: [];
         saveCache();
+
         renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
         toast('ซิงค์ข้อมูลสำเร็จ');
       }catch(e){
@@ -533,7 +483,6 @@
     }
 
     /* ============== Actions ============== */
-    // Sales CRUD
     $('#addSale').onclick = async ()=>{
       try{
         const menuId = $('#saleMenu').value;
@@ -546,9 +495,14 @@
           channel: $('#saleChannel').value || 'หน้าร้าน'
         };
         await apiCall({action:'sales_create', payload},{message:'กำลังบันทึกยอดขาย…'});
-        toast('บันทึกยอดขายแล้ว'); await syncAll();
+        // เคลียร์ฟอร์มเล็กน้อย
+        $('#saleQty').value = '1';
+        $('#saleDiscount').value = '0';
+        toast('บันทึกยอดขายแล้ว');
+        await syncAll();
       }catch(e){ toast('บันทึกยอดขายไม่สำเร็จ: '+e.message, false); }
     };
+
     $('#salesList').addEventListener('click', async (e)=>{
       const del=e.target.closest('[data-del-sale]'); const ed=e.target.closest('[data-edit-sale]');
       if(del){
@@ -568,7 +522,6 @@
       }
     });
 
-    // Expenses CRUD
     $('#addExp').onclick = async ()=>{
       try{
         const amount=Math.max(0, Number($('#expAmt').value||0)||0);
@@ -579,7 +532,8 @@
           note: $('#expNote').value || ''
         };
         await apiCall({action:'expenses_create', payload},{message:'กำลังบันทึกค่าใช้จ่าย…'});
-        toast('บันทึกค่าใช้จ่ายแล้ว'); $('#expNote').value=''; $('#expAmt').value='';
+        $('#expNote').value=''; $('#expAmt').value='';
+        toast('บันทึกค่าใช้จ่ายแล้ว');
         await syncAll();
       }catch(e){ toast('บันทึกค่าใช้จ่ายไม่สำเร็จ: '+e.message, false); }
     };
@@ -601,7 +555,6 @@
       }
     });
 
-    // Menus CRUD
     $('#addMenu').onclick = async ()=>{
       const name=($('#menuName').value||'').trim();
       const cost=Math.max(0, Number($('#menuCost').value||0)||0);
@@ -648,7 +601,6 @@
     $('#applyRange').onclick = ()=>{ State.settings.range='custom'; State.settings.start=$('#startDate').value||todayStr(); State.settings.end=$('#endDate').value||todayStr(); saveCache(); syncAll(); };
     $('#syncBtn').onclick = ()=> syncAll();
 
-    // Init
     Loader.init();
     loadCache();
     if(!State.settings.start || !State.settings.end){
@@ -659,7 +611,6 @@
     switchPage(State.settings.activePage || 'dashboard');
     renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
 
-    // debounce resize → ป้องกันกราฟพอง
     let resizeTimer=null;
     window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>renderDashboard(),150); });
 
