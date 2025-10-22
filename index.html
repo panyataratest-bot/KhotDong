@@ -30,13 +30,39 @@
     .kpi{ display:flex; align-items:center; gap:.9rem }
     .kpi .dot{ width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:#f3f4f6 }
     .hide{ display:none !important }
-    .toast{ position:fixed; right:12px; top:12px; background:#111827; color:#fff; padding:.7rem 1rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:50; transform:translateY(-10px); opacity:0; transition:all .22s ease }
-    .toast.show{ transform:translateY(0); opacity:1 }
+    .toast{ position:fixed; right:12px; top:12px; background:#111827; color:#fff; padding:.7rem 1rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:60; transform:translateY(-10px); opacity:0; transition:all .22s ease }
+
+    /* ===== Global Loader Overlay ===== */
+    .loader-overlay{
+      position:fixed; inset:0; z-index:50;
+      background:rgba(15,23,42,.25);
+      backdrop-filter:saturate(140%) blur(4px);
+      display:flex; align-items:center; justify-content:center;
+    }
+    .loader-box{
+      background:rgba(255,255,255,.9); border:1px solid var(--line);
+      border-radius:16px; padding:14px 16px; display:flex; align-items:center; gap:.75rem;
+      box-shadow:0 10px 30px rgba(0,0,0,.12)
+    }
+    .spinner{
+      width:28px; height:28px; border-radius:999px;
+      border:3px solid #e5e7eb; border-top-color:#111827;
+      animation:spin .8s linear infinite;
+    }
+    @keyframes spin{ to{ transform:rotate(360deg) } }
   </style>
 </head>
 <body class="bg-app">
   <!-- ===== Toast ===== -->
   <div id="toast" class="toast"></div>
+
+  <!-- ===== Global Loader (hidden by default) ===== -->
+  <div id="loader" class="loader-overlay hide">
+    <div class="loader-box">
+      <div class="spinner"></div>
+      <div class="text-sm text-slate-700 font-semibold">กำลังโหลดข้อมูล…</div>
+    </div>
+  </div>
 
   <!-- ===== Header ===== -->
   <header class="sticky-header">
@@ -238,9 +264,9 @@
 
   <script>
     /* ================= CONFIG ================= */
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxXzseyP4qUvBb7_dAN99FE_OhxLmNEsLvzEcElCcfdTwWgetOjhg1MWIjw9QQZ05-6/exec'; // <-- ใส่ URL web app ของคุณ
+    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxXzseyP4qUvBb7_dAN99FE_OhxLmNEsLvzEcElCcfdTwWgetOjhg1MWIjw9QQZ05-6/exec'; // ใส่ URL ของคุณ
 
-    /* ================ Utils ================ */
+    /* ================ Utils & Loader ================ */
     const THB = new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB',maximumFractionDigits:0});
     const PCT = (n)=> (isFinite(n)? (n*100).toFixed(1)+'%':'0%');
     const iso = (d)=> d.toISOString().slice(0,10);
@@ -249,9 +275,18 @@
     const $$= (s)=> Array.from(document.querySelectorAll(s));
     function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
 
+    // Global loader with reference counter
+    const Loader = {
+      el: null, count: 0,
+      init(){ this.el = $('#loader'); },
+      show(){ this.count++; this.el.classList.remove('hide'); },
+      hide(){ this.count = Math.max(0, this.count-1); if(this.count===0) this.el.classList.add('hide'); }
+    };
+
     /* ============== JSONP ONLY API ============== */
     function apiCall(body){
       if(!GAS_URL || GAS_URL.includes('XXXXXXXX')) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า GAS_URL'));
+      Loader.show();
       return new Promise((resolve,reject)=>{
         try{
           const cb = 'cb_' + Math.random().toString(36).slice(2,9);
@@ -259,9 +294,10 @@
             try{
               delete window[cb];
               s.remove();
+              Loader.hide();
               if(!resp || !resp.ok) return reject(new Error((resp && resp.error) || 'JSONP error'));
               resolve(resp.data);
-            }catch(e){ reject(e); }
+            }catch(e){ Loader.hide(); reject(e); }
           };
           const p = new URLSearchParams();
           p.set('action', body.action);
@@ -275,9 +311,9 @@
 
           const s = document.createElement('script');
           s.src = GAS_URL + '?' + p.toString();
-          s.onerror = ()=>{ delete window[cb]; s.remove(); reject(new Error('JSONP load error')) };
+          s.onerror = ()=>{ delete window[cb]; s.remove(); Loader.hide(); reject(new Error('JSONP load error')) };
           document.body.appendChild(s);
-        }catch(e){ reject(e); }
+        }catch(e){ Loader.hide(); reject(e); }
       });
     }
 
@@ -557,13 +593,14 @@
       }
     });
 
-    /* ============== Nav & Events ============== */
+    /* ============== Nav & Init ============== */
     function switchPage(p){
       ['dashboard','sales','expenses','menu','data'].forEach(x=> document.getElementById('page-'+x)?.classList.toggle('hide', x!==p));
       $$('.nav-item').forEach(i=> i.classList.toggle('active', i.getAttribute('data-page')===p));
       State.settings.activePage=p; saveCache();
       if(p==='dashboard') renderDashboard(); if(p==='sales') renderSalesList(); if(p==='expenses') renderExpList(); if(p==='menu') renderMenu();
     }
+
     $$('.nav-item').forEach(b=> b.addEventListener('click', ()=> switchPage(b.getAttribute('data-page')) ));
     $('#rToday').onclick = ()=> setQuickRange('today');
     $('#r7d').onclick    = ()=> setQuickRange('7d');
@@ -571,7 +608,8 @@
     $('#applyRange').onclick = ()=>{ State.settings.range='custom'; State.settings.start=$('#startDate').value||todayStr(); State.settings.end=$('#endDate').value||todayStr(); saveCache(); syncAll(); };
     $('#syncBtn').onclick = ()=> syncAll();
 
-    /* ============== Init ============== */
+    // Init
+    Loader.init();
     loadCache();
     if(!State.settings.start || !State.settings.end){
       State.settings.start = iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
@@ -585,7 +623,6 @@
     let resizeTimer=null;
     window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>renderDashboard(),150); });
 
-    // ดึงข้อมูลจากเซิร์ฟเวอร์ทันที
     (async()=>{ if(GAS_URL && !GAS_URL.includes('XXXXXXXX')) await syncAll(); })();
   </script>
 </body>
