@@ -5,16 +5,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>บัญชีร้านอาหาร · (GAS JSONP)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- ใช้ UMD bundle เพื่อ auto-register ทุก chart type -->
+  <!-- ใช้ UMD bundle เพื่อให้ Chart ถูก register อัตโนมัติ -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    :root{ --bg-from:#f8fafc; --bg-to:#f1f5f9; --card:#fff; --line:#e5e7eb; --ink:#0f172a; --primary:#1a1a1a; --radius:16px }
+    :root{ --bg-from:#f8fafc; --bg-to:#f1f5f9; --card:#fff; --line:#e5e7eb; --ink:#0f172a; --muted:#64748b; --primary:#1a1a1a; --radius:16px; }
     *{ box-sizing:border-box }
     body{ font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink) }
     .bg-app{ background:linear-gradient(180deg,var(--bg-from),var(--bg-to)); min-height:100dvh }
     .container{ max-width:960px; margin:0 auto }
-    .card{ background:#fff; border:1px solid var(--line); border-radius:16px; box-shadow:0 1px 2px rgba(0,0,0,.04) }
+    .card{ background:var(--card); border:1px solid var(--line); border-radius:var(--radius); box-shadow:0 1px 2px rgba(0,0,0,.04) }
     .input{ border:1px solid var(--line); border-radius:12px; padding:.8rem .9rem; width:100% }
     .input:focus{ outline:none; border-color:#c7d2fe; box-shadow:0 0 0 4px rgba(99,102,241,.15) }
     .btn{ border-radius:12px; padding:.8rem 1rem; font-weight:600 }
@@ -87,11 +87,10 @@
       <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div class="card p-3">
           <div class="flex items-center justify-between mb-2">
-            <div class="font-semibold">ยอดขายตามช่วงเวลา</div>
+            <div class="font-semibold">ยอดขายรายวัน</div>
             <div id="salesEmpty" class="text-xs text-slate-500 hidden">ไม่มีข้อมูลช่วงนี้</div>
           </div>
           <div class="relative" style="height:220px"><canvas id="salesChart"></canvas></div>
-          <div id="aggHint" class="text-xs text-slate-500 mt-1"></div>
         </div>
         <div class="card p-3">
           <div class="font-semibold mb-2">Top เมนูขายดี</div>
@@ -236,6 +235,7 @@
     </section>
   </main>
 
+  <!-- Bottom Nav -->
   <nav class="bottom-nav">
     <div class="container grid grid-cols-4">
       <button class="nav-item active" data-page="dashboard"><span>📊</span><span>ภาพรวม</span></button>
@@ -257,18 +257,18 @@
     const $ = (s)=> document.querySelector(s);
     const $$= (s)=> Array.from(document.querySelectorAll(s));
     function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
+
     const parseISODate = (s)=> new Date(String(s).slice(0,10)+'T12:00:00');
 
-    // unwrap list from many common container keys
     function unwrapList(v){
       if(Array.isArray(v)) return v;
       if(!v || typeof v!=='object') return [];
       for(const k of ['rows','items','values','data','sales','list']){ if(Array.isArray(v[k])) return v[k]; }
       return [];
     }
+    // ดึง id จากหลายรูปแบบชื่อคีย์
     const getId = (o)=> o?.id ?? o?.ID ?? o?.expenseId ?? o?.expenseid ?? o?._id ?? o?.uuid ?? o?.Id ?? null;
 
-    // Loader
     const Loader = {
       el: null, textEl: null, count: 0, lockBtns: [],
       init(){ this.el=$('#loader'); this.textEl=$('#loaderText'); this.lockBtns=$$('button, input[type="submit"]'); },
@@ -276,37 +276,35 @@
       hide(){ this.count=Math.max(0,this.count-1); if(this.count===0){ this.el.classList.add('hide'); this.textEl.textContent='กำลังโหลดข้อมูล…'; this.lockBtns.forEach(b=>b.removeAttribute('disabled')); } }
     };
 
-    /* ============== JSONP ============== */
     function apiCall(body, opts={}){
       if(!GAS_URL || GAS_URL.includes('XXXXXXXX')) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า GAS_URL'));
       if(!body || !body.action) return Promise.reject(new Error('action required'));
       Loader.show(opts.message || 'กำลังประมวลผล…');
       return new Promise((resolve,reject)=>{
         const cb='cb_'+Math.random().toString(36).slice(2,9);
-        const params=new URLSearchParams();
-        params.set('action',body.action);
-        if(body.id) params.set('id',body.id);
-        if(body.range?.start && body.range?.end){ params.set('rangeStart',body.range.start); params.set('rangeEnd',body.range.end); }
-        if(body.payload) params.set('payload', JSON.stringify(body.payload));
-        params.set('callback',cb);
+        const p=new URLSearchParams(); p.set('action',body.action);
+        if(body.id) p.set('id',body.id);
+        if(body.range && body.range.start && body.range.end){ p.set('rangeStart',body.range.start); p.set('rangeEnd',body.range.end); }
+        if(body.payload) p.set('payload', JSON.stringify(body.payload));
+        p.set('callback',cb);
 
         const s=document.createElement('script'); let timer=null;
         const cleanup=()=>{ try{clearTimeout(timer);}catch(_){ } try{delete window[cb];}catch(_){ } try{s.remove();}catch(_){ } };
 
-        window[cb]=(resp)=>{ cleanup(); Loader.hide(); if(!resp||!resp.ok){ reject(new Error((resp&&resp.error)||'JSONP error')); } else { resolve(resp.data); } };
+        window[cb]=(resp)=>{ cleanup(); Loader.hide(); if(!resp||!resp.ok){ return reject(new Error((resp&&resp.error)||'JSONP error')); } resolve(resp.data); };
         s.onerror = ()=>{ cleanup(); Loader.hide(); reject(new Error('JSONP load error')); };
-        s.src = GAS_URL+'?'+params.toString(); document.body.appendChild(s);
-        timer=setTimeout(()=>{ cleanup(); Loader.hide(); reject(new Error('Request timed out')); }, opts.timeoutMs||15000);
+        s.src = GAS_URL+'?'+p.toString(); document.body.appendChild(s);
+        timer=setTimeout(()=>{ cleanup(); Loader.hide(); reject(new Error('Request timed out')); }, opts.timeoutMs||20000);
       });
     }
 
     /* ============== State ============== */
-    const CACHE_KEY='foodacc_cache_v5';
+    const CACHE_KEY='foodacc_cache_v4';
     const State={ menus:[], sales:[], expenses:[], settings:{activePage:'dashboard', range:'month', start:null, end:null} };
     function loadCache(){ const raw=localStorage.getItem(CACHE_KEY); if(raw){ try{ Object.assign(State, JSON.parse(raw)); }catch(e){} } }
     function saveCache(){ localStorage.setItem(CACHE_KEY, JSON.stringify(State)); }
 
-    /* ============== Date Range ============== */
+    /* ============== Date & Range ============== */
     function setQuickRange(type){
       const now=new Date(); let start,end=new Date();
       if(type==='today') start=new Date();
@@ -323,168 +321,73 @@
       return d>=s && d<=e;
     }
 
-    /* ============== Adaptive Aggregation for Charts ============== */
-    const MAX_POINTS = 120;     // safety cap
-    const TOP_N = 8;            // top menu bars
-
-    function diffDays(a,b){
-      const d1=parseISODate(a), d2=parseISODate(b); return Math.round((d2-d1)/86400000)+1;
-    }
-    function bucketOf(date, mode){
-      const d=parseISODate(date);
-      if(mode==='day') return iso(d);
-      if(mode==='week'){ // ISO week key: YYYY-Www (Mon start)
-        const tmp=new Date(d); const day=(tmp.getDay()+6)%7; tmp.setDate(tmp.getDate()-day);
-        const y=tmp.getFullYear();
-        const week = Math.ceil((((tmp - new Date(y,0,1)) / 86400000) + ((new Date(y,0,1).getDay()+6)%7) + 1)/7);
-        return `${y}-W${String(week).padStart(2,'0')}`;
-      }
-      // month
-      return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-    }
-    function chooseMode(start, end){
-      const days = diffDays(start, end);
-      if(days<=45) return 'day';
-      if(days<=370) return 'week';
-      return 'month';
-    }
-
     /* ============== Charts ============== */
     let charts={ sales:null, top:null, breakdown:null };
     const destroyChart=(k)=>{ if(charts[k]){ try{charts[k].destroy();}catch(_){ } charts[k]=null; } };
     const boundedMax=(arr)=>{ const nums=(arr||[]).map(n=>Number(n)||0); const m=Math.max(0,...nums); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
+    function lineChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('sales'); charts.sales=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'ยอดขายรายวัน',data,tension:.25,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function barChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('top'); charts.top=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{label:'จำนวนที่ขาย',data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function doughnutChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('breakdown'); charts.breakdown=new Chart(cv.getContext('2d'),{type:'doughnut',data:{labels,datasets:[{data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom'}}}}); }
 
-    function renderSalesChartAgg(){
-      const start = State.settings.start||todayStr();
-      const end   = State.settings.end||todayStr();
-      const mode  = chooseMode(start, end);
-      $('#aggHint').textContent = mode==='day'?'สรุปเป็นรายวัน': mode==='week'?'สรุปเป็นรายสัปดาห์':'สรุปเป็นรายเดือน';
-
-      // aggregate
-      const buckets = {};
-      for(const s of State.sales){
-        if(!inRange(s.date)) continue;
-        const price = Number((State.menus.find(x=>x.id === (s.menuId??s.menuid))||{}).price||0);
-        const qty   = Math.max(0, Number(s.qty||0)||0);
-        const discount = Math.max(0, Number(s.discount||0)||0);
-        const gross = price*qty - discount;
-        const key = bucketOf(s.date, mode);
-        buckets[key] = (buckets[key]||0) + gross;
-      }
-      const labels = Object.keys(buckets).sort();
-      const data   = labels.map(k=>buckets[k]);
-
-      // safety cap (downsample evenly if still too many)
-      let lbls=labels, vals=data;
-      if(labels.length>MAX_POINTS){
-        const step=Math.ceil(labels.length/MAX_POINTS);
-        lbls=[]; vals=[];
-        for(let i=0;i<labels.length;i+=step){ lbls.push(labels[i]); vals.push(data[i]); }
-      }
-
-      const cv = $('#salesChart'); if(!cv||!window.Chart) return;
-      destroyChart('sales');
-      charts.sales = new Chart(cv.getContext('2d'),{
-        type:'line',
-        data:{ labels: lbls, datasets:[{ label:'ยอดขาย', data: vals, tension:.25, pointRadius:0 }]},
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true,
-          scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(vals) } }, plugins:{ legend:{ display:false } } }
-      });
-      $('#salesEmpty').classList.toggle('hidden', lbls.length>0);
-    }
-
-    function renderTopMenuChart(){
-      const qtyByMenu = {};
-      for(const s of State.sales){ if(!inRange(s.date)) continue; const k=s.menuId??s.menuid; qtyByMenu[k]=(qtyByMenu[k]||0)+(Number(s.qty||0)||0); }
-      // map id -> name
-      const nameById = Object.fromEntries(State.menus.map(m=>[m.id, m.name]));
-      const entries = Object.entries(qtyByMenu).map(([id,q])=>[nameById[id]||'(ลบเมนูแล้ว)', q]).sort((a,b)=>b[1]-a[1]);
-      const top = entries.slice(0,TOP_N);
-      const othersSum = entries.slice(TOP_N).reduce((a,b)=>a+b[1],0);
-      if(othersSum>0) top.push(['อื่นๆ', othersSum]);
-
-      const labels = top.map(x=>x[0]);
-      const data   = top.map(x=>x[1]);
-
-      const cv = $('#topMenuChart'); if(!cv||!window.Chart) return;
-      destroyChart('top');
-      charts.top = new Chart(cv.getContext('2d'),{
-        type:'bar',
-        data:{ labels, datasets:[{ label:'จำนวนที่ขาย', data }] },
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true,
-          scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
-      });
-    }
-
-    function renderBreakdownChart({cogsTotal, expTotal, netProfit}){
-      const labels=['COGS','ค่าใช้จ่ายอื่น','กำไรสุทธิ'];
-      const data=[cogsTotal, expTotal, Math.max(netProfit,0)];
-      const cv = $('#breakdownChart'); if(!cv||!window.Chart) return;
-      destroyChart('breakdown');
-      charts.breakdown = new Chart(cv.getContext('2d'),{
-        type:'doughnut',
-        data:{ labels, datasets:[{ data }] },
-        options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{ position:'bottom' } } }
-      });
-    }
-
-    /* ============== Render Basic Tables/KPIs ============== */
+    /* ============== Render ============== */
     function computeSummary(){
       const sales=State.sales.filter(s=>inRange(s.date));
       const exps =State.expenses.filter(e=>inRange(e.date));
-      let salesTotal=0, cogsTotal=0; const perMenu={};
+      let salesTotal=0, cogsTotal=0; const perDay={}, perMenu={};
       for(const s of sales){
-        const menuKey=s.menuId ?? s.menuid;
-        const m=State.menus.find(x=>x.id===menuKey);
-        const price=Number(m?.price||0), cost=Number(m?.cost||0);
+        const menuKey = s.menuId ?? s.menuid;
+        const m = State.menus.find(x=>x.id===menuKey);
+        const price=Number(m? m.price:0)||0, cost=Number(m? m.cost:0)||0;
         const qty=Math.max(0, Number(s.qty||0)||0);
         const discount=Math.max(0, Number(s.discount||0)||0);
-        salesTotal += price*qty - discount;
-        cogsTotal  += cost*qty;
-        const name=m?m.name:'(ลบเมนูแล้ว)'; perMenu[name]=(perMenu[name]||0)+qty;
+        const gross=(price*qty)-discount;
+        const cogs =(cost*qty);
+        salesTotal+=gross; cogsTotal+=cogs;
+        const key=String(s.date).slice(0,10);
+        perDay[key]=(perDay[key]||0)+gross;
+        const name=m? m.name:'(ลบเมนูแล้ว)'; perMenu[name]=(perMenu[name]||0)+qty;
       }
-      const expTotal = exps.reduce((a,b)=>a+(Number(b.amount||0)||0),0);
-      const grossProfit = salesTotal - cogsTotal;
-      const netProfit   = grossProfit - expTotal;
-      return { salesTotal, cogsTotal, grossProfit, expTotal, netProfit, perMenu };
+      const expTotal=exps.reduce((a,b)=>a+Math.max(0,Number(b.amount||0)||0),0);
+      const grossProfit=salesTotal-cogsTotal;
+      const netProfit=grossProfit-expTotal;
+      return { salesTotal,cogsTotal,grossProfit,expTotal,netProfit,perDay,perMenu };
     }
-
     function renderDashboard(){
       $('#startDate').value=State.settings.start||todayStr();
       $('#endDate').value=State.settings.end||todayStr();
       $$('.tab-btn').forEach(b=>b.classList.remove('active'));
       const r=State.settings.range||'month'; (r==='today'?$('#rToday'):r==='7d'?$('#r7d'):$('#rMonth')).classList.add('active');
 
-      const summary = computeSummary();
-      $('#kpiSales').textContent=THB.format(summary.salesTotal);
-      $('#kpiCogs').textContent =THB.format(summary.cogsTotal);
-      $('#kpiGross').textContent=THB.format(summary.grossProfit);
-      $('#kpiNet').textContent  =THB.format(summary.netProfit);
-      $('#kpiCogsPct').textContent=PCT(summary.salesTotal?summary.cogsTotal/summary.salesTotal:0);
-      $('#kpiNetPct').textContent =PCT(summary.salesTotal?summary.netProfit/summary.salesTotal:0);
+      const { salesTotal,cogsTotal,grossProfit,expTotal,netProfit,perDay,perMenu }=computeSummary();
+      $('#kpiSales').textContent=THB.format(salesTotal);
+      $('#kpiCogs').textContent =THB.format(cogsTotal);
+      $('#kpiGross').textContent=THB.format(grossProfit);
+      $('#kpiNet').textContent  =THB.format(netProfit);
+      $('#kpiCogsPct').textContent=PCT(salesTotal?cogsTotal/salesTotal:0);
+      $('#kpiNetPct').textContent =PCT(salesTotal?netProfit/salesTotal:0);
 
-      // วาดกราฟแบบ lazy เพื่อลด jank
-      requestAnimationFrame(()=>{
-        renderSalesChartAgg();
-        renderTopMenuChart();
-        renderBreakdownChart(summary);
-      });
+      const days=Object.keys(perDay).sort(); const vals=days.map(d=>perDay[d]);
+      $('#salesEmpty').classList.toggle('hidden', days.length>0);
+      lineChart('#salesChart',days,vals);
+
+      const menuNames=Object.keys(perMenu); const menuQtys=menuNames.map(k=>perMenu[k]);
+      barChart('#topMenuChart',menuNames,menuQtys);
+      doughnutChart('#breakdownChart',['COGS','ค่าใช้จ่ายอื่น','กำไรสุทธิ'],[cogsTotal,expTotal,Math.max(netProfit,0)]);
     }
-
     function renderSalesList(){
       const list=$('#salesList'); list.innerHTML='';
       const sorted=[...State.sales].sort((a,b)=> String(b.date).slice(0,10).localeCompare(String(a.date).slice(0,10)));
       if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีรายการขาย</div>`; $('#salesCount').textContent='0 รายการ'; return; }
       sorted.slice(0,200).forEach(s=>{
-        const menuKey=s.menuId ?? s.menuid;
+        const menuKey = s.menuId ?? s.menuid;
         const m=State.menus.find(x=>x.id===menuKey);
-        const price=Number(m?.price||0), cost=Number(m?.cost||0);
+        const price=Number(m?m.price:0)||0, cost=Number(m?m.cost:0)||0;
         const qty=Math.max(0, Number(s.qty||0)||0);
         const discount=Math.max(0, Number(s.discount||0)||0);
         const gross=price*qty-discount;
         const profit=gross-cost*qty;
         const id=getId(s);
-        const disabledAttr=id?'':'disabled';
+        const disabledAttr = id? '' : 'disabled';
         const row=document.createElement('div');
         row.className='flex items-center justify-between border-b py-2';
         row.innerHTML=`
@@ -504,14 +407,14 @@
       });
       $('#salesCount').textContent=`${State.sales.length} รายการ`;
     }
-
     function renderExpList(){
       const list=$('#expList'); list.innerHTML='';
       const sorted=[...State.expenses].sort((a,b)=> String(b.date).slice(0,10).localeCompare(String(a.date).slice(0,10)));
       if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีค่าใช้จ่าย</div>`; $('#expCount').textContent='0 รายการ'; return; }
       sorted.slice(0,200).forEach(e=>{
         const amt=Math.max(0, Number(e.amount||0)||0);
-        const id=getId(e); const disabledAttr=id?'':'disabled';
+        const id=getId(e);
+        const disabledAttr = id? '' : 'disabled';
         const row=document.createElement('div');
         row.className='flex items-center justify-between border-b py-2';
         row.innerHTML=`
@@ -530,29 +433,62 @@
       });
       $('#expCount').textContent=`${State.expenses.length} รายการ`;
     }
+    function renderMenu(){
+      const tb=$('#menuTable'); tb.innerHTML='';
+      if(!State.menus.length){ tb.innerHTML=`<tr><td colspan="5"><div class="empty">ยังไม่มีเมนู</div></td></tr>`; return; }
+      State.menus.forEach(m=>{
+        const cost=Number(m.cost||0)||0, price=Number(m.price||0)||0;
+        const p=price-cost;
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
+          <td class="py-2 pr-2">${m.name}</td>
+          <td class="py-2 pr-2">${THB.format(cost)}</td>
+          <td class="py-2 pr-2">${THB.format(price)}</td>
+          <td class="py-2 pr-2 ${p>=0?'text-emerald-600':'text-red-600'}">${THB.format(p)}</td>
+          <td class="py-2 pr-2 text-right">
+            <button class="icon-btn" data-edit-menu="${m.id}">แก้ไข</button>
+            <button class="icon-btn" data-del-menu="${m.id}">ลบ</button>
+          </td>`;
+        tb.appendChild(tr);
+      });
+      const sel=$('#saleMenu'); sel.innerHTML='';
+      State.menus.forEach(m=>{ const op=document.createElement('option'); op.value=m.id; op.textContent=m.name; sel.appendChild(op); });
+    }
 
-    /* ============== Sync (range only – เร็วขึ้น) ============== */
+    /* ============== Sync (fallback + unwrap) ============== */
     let syncing=false;
+    async function readWithFallback(action, range, label){
+      try{
+        const r = await apiCall({action, range},{message:`กำลังโหลด${label}…`});
+        const arr = unwrapList(r);
+        if(arr.length) return arr;
+        const r2 = await apiCall({action},{message:`โหลด${label}ทั้งหมด…`});
+        return unwrapList(r2);
+      }catch(_){
+        const r3 = await apiCall({action},{message:`โหลด${label}ทั้งหมด…`});
+        return unwrapList(r3);
+      }
+    }
     async function syncAll(){
       if(syncing) return;
       syncing=true;
       try{
         const range={ start: $('#startDate').value || State.settings.start || todayStr(),
                       end:   $('#endDate').value   || State.settings.end   || todayStr() };
-        const t0=performance.now();
+
         const menusRaw = await apiCall({action:'menus_list'},{message:'โหลดเมนู…'});
-        const [salesRaw, expensesRaw] = await Promise.all([
-          apiCall({action:'sales_list', range},{message:'โหลดยอดขาย…'}),
-          apiCall({action:'expenses_list', range},{message:'โหลดค่าใช้จ่าย…'})
-        ]);
         State.menus = unwrapList(menusRaw);
-        State.sales = unwrapList(salesRaw);
-        State.expenses = unwrapList(expensesRaw);
-        // เก็บแคช
+
+        const [salesRaw, expensesRaw] = await Promise.all([
+          readWithFallback('sales_list', range, 'ยอดขาย'),
+          readWithFallback('expenses_list', range, 'ค่าใช้จ่าย')
+        ]);
+        State.sales = salesRaw;
+        State.expenses = expensesRaw;
+
         saveCache();
-        // Render
         renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
-        toast('ซิงค์สำเร็จ ('+Math.round(performance.now()-t0)+'ms)');
+        toast('ซิงค์ข้อมูลสำเร็จ');
       }catch(e){
         toast('ซิงค์ไม่สำเร็จ: '+e.message, false);
         renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
@@ -625,28 +561,6 @@
     });
 
     /* ============== Nav & Init ============== */
-    function renderMenu(){
-      const tb=$('#menuTable'); tb.innerHTML='';
-      if(!State.menus.length){ tb.innerHTML=`<tr><td colspan="5"><div class="empty">ยังไม่มีเมนู</div></td></tr>`; return; }
-      State.menus.forEach(m=>{
-        const cost=Number(m.cost||0)||0, price=Number(m.price||0)||0;
-        const p=price-cost;
-        const tr=document.createElement('tr');
-        tr.innerHTML=`
-          <td class="py-2 pr-2">${m.name}</td>
-          <td class="py-2 pr-2">${THB.format(cost)}</td>
-          <td class="py-2 pr-2">${THB.format(price)}</td>
-          <td class="py-2 pr-2 ${p>=0?'text-emerald-600':'text-red-600'}">${THB.format(p)}</td>
-          <td class="py-2 pr-2 text-right">
-            <button class="icon-btn" data-edit-menu="${m.id}">แก้ไข</button>
-            <button class="icon-btn" data-del-menu="${m.id}">ลบ</button>
-          </td>`;
-        tb.appendChild(tr);
-      });
-      const sel=$('#saleMenu'); sel.innerHTML='';
-      State.menus.forEach(m=>{ const op=document.createElement('option'); op.value=m.id; op.textContent=m.name; sel.appendChild(op); });
-    }
-
     function switchPage(p){
       ['dashboard','sales','expenses','menu'].forEach(x=> document.getElementById('page-'+x)?.classList.toggle('hide', x!==p));
       $$('.nav-item').forEach(i=> i.classList.toggle('active', i.getAttribute('data-page')===p));
@@ -671,9 +585,8 @@
     switchPage(State.settings.activePage || 'dashboard');
     renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
 
-    // debounce resize → ลดการวาดกราฟซ้ำ
     let resizeTimer=null;
-    window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>renderDashboard(),180); });
+    window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>renderDashboard(),150); });
 
     (async()=>{ if(GAS_URL && !GAS_URL.includes('XXXXXXXX')) await syncAll(); })();
   </script>
