@@ -5,7 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <title>บัญชีร้านอาหาร · (GAS JSONP)</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- ใช้ UMD bundle เพื่อให้ Chart ถูก register อัตโนมัติ -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
     :root{ --bg-from:#f8fafc; --bg-to:#f1f5f9; --card:#fff; --line:#e5e7eb; --ink:#0f172a; --muted:#64748b; --primary:#1a1a1a; --radius:16px; }
@@ -257,16 +258,16 @@
     const $$= (s)=> Array.from(document.querySelectorAll(s));
     function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
 
-    // parse & date helpers
     const parseISODate = (s)=> new Date(String(s).slice(0,10)+'T12:00:00');
 
-    // unwrap list from any common container key
     function unwrapList(v){
       if(Array.isArray(v)) return v;
       if(!v || typeof v!=='object') return [];
       for(const k of ['rows','items','values','data','sales','list']){ if(Array.isArray(v[k])) return v[k]; }
       return [];
     }
+    // ดึง id จากหลายรูปแบบชื่อคีย์
+    const getId = (o)=> o?.id ?? o?.ID ?? o?.expenseId ?? o?.expenseid ?? o?._id ?? o?.uuid ?? o?.Id ?? null;
 
     const Loader = {
       el: null, textEl: null, count: 0, lockBtns: [],
@@ -275,7 +276,6 @@
       hide(){ this.count=Math.max(0,this.count-1); if(this.count===0){ this.el.classList.add('hide'); this.textEl.textContent='กำลังโหลดข้อมูล…'; this.lockBtns.forEach(b=>b.removeAttribute('disabled')); } }
     };
 
-    /* ============== JSONP API (timeout + cleanup) ============== */
     function apiCall(body, opts={}){
       if(!GAS_URL || GAS_URL.includes('XXXXXXXX')) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า GAS_URL'));
       if(!body || !body.action) return Promise.reject(new Error('action required'));
@@ -299,12 +299,12 @@
     }
 
     /* ============== State ============== */
-    const CACHE_KEY='foodacc_cache_v3';
+    const CACHE_KEY='foodacc_cache_v4';
     const State={ menus:[], sales:[], expenses:[], settings:{activePage:'dashboard', range:'month', start:null, end:null} };
     function loadCache(){ const raw=localStorage.getItem(CACHE_KEY); if(raw){ try{ Object.assign(State, JSON.parse(raw)); }catch(e){} } }
     function saveCache(){ localStorage.setItem(CACHE_KEY, JSON.stringify(State)); }
 
-    /* ============== Date Range & Helpers ============== */
+    /* ============== Date & Range ============== */
     function setQuickRange(type){
       const now=new Date(); let start,end=new Date();
       if(type==='today') start=new Date();
@@ -323,11 +323,11 @@
 
     /* ============== Charts ============== */
     let charts={ sales:null, top:null, breakdown:null };
-    const destroyChart=(k)=>{ if(charts[k]){ try{charts[k].destroy();}catch(_){} charts[k]=null; } };
+    const destroyChart=(k)=>{ if(charts[k]){ try{charts[k].destroy();}catch(_){ } charts[k]=null; } };
     const boundedMax=(arr)=>{ const nums=(arr||[]).map(n=>Number(n)||0); const m=Math.max(0,...nums); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
-    function lineChart(sel,labels,data){ const cv=$(sel); if(!cv) return; destroyChart('sales'); charts.sales=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'ยอดขายรายวัน',data,tension:.25,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
-    function barChart(sel,labels,data){ const cv=$(sel); if(!cv) return; destroyChart('top'); charts.top=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{label:'จำนวนที่ขาย',data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
-    function doughnutChart(sel,labels,data){ const cv=$(sel); if(!cv) return; destroyChart('breakdown'); charts.breakdown=new Chart(cv.getContext('2d'),{type:'doughnut',data:{labels,datasets:[{data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom'}}}}); }
+    function lineChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('sales'); charts.sales=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'ยอดขายรายวัน',data,tension:.25,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function barChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('top'); charts.top=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{label:'จำนวนที่ขาย',data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
+    function doughnutChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('breakdown'); charts.breakdown=new Chart(cv.getContext('2d'),{type:'doughnut',data:{labels,datasets:[{data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom'}}}}); }
 
     /* ============== Render ============== */
     function computeSummary(){
@@ -335,7 +335,7 @@
       const exps =State.expenses.filter(e=>inRange(e.date));
       let salesTotal=0, cogsTotal=0; const perDay={}, perMenu={};
       for(const s of sales){
-        const menuKey = s.menuId ?? s.menuid; // รองรับสองชื่อ
+        const menuKey = s.menuId ?? s.menuid;
         const m = State.menus.find(x=>x.id===menuKey);
         const price=Number(m? m.price:0)||0, cost=Number(m? m.cost:0)||0;
         const qty=Math.max(0, Number(s.qty||0)||0);
@@ -386,6 +386,8 @@
         const discount=Math.max(0, Number(s.discount||0)||0);
         const gross=price*qty-discount;
         const profit=gross-cost*qty;
+        const id=getId(s);
+        const disabledAttr = id? '' : 'disabled';
         const row=document.createElement('div');
         row.className='flex items-center justify-between border-b py-2';
         row.innerHTML=`
@@ -397,8 +399,8 @@
             <div class="font-semibold">${THB.format(gross)}</div>
             <div class="text-xs ${profit>=0?'text-emerald-600':'text-red-600'}">กำไร ${THB.format(profit)}</div>
             <div class="mt-1 flex gap-1 justify-end">
-              <button class="icon-btn" data-edit-sale="${s.id}">แก้ไข</button>
-              <button class="icon-btn" data-del-sale="${s.id}">ลบ</button>
+              <button class="icon-btn" data-edit-sale="${id??''}" ${disabledAttr}>แก้ไข</button>
+              <button class="icon-btn" data-del-sale="${id??''}" ${disabledAttr}>ลบ</button>
             </div>
           </div>`;
         list.appendChild(row);
@@ -411,6 +413,8 @@
       if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีค่าใช้จ่าย</div>`; $('#expCount').textContent='0 รายการ'; return; }
       sorted.slice(0,200).forEach(e=>{
         const amt=Math.max(0, Number(e.amount||0)||0);
+        const id=getId(e);
+        const disabledAttr = id? '' : 'disabled';
         const row=document.createElement('div');
         row.className='flex items-center justify-between border-b py-2';
         row.innerHTML=`
@@ -421,8 +425,8 @@
           <div class="text-right">
             <div class="font-semibold">${THB.format(amt)}</div>
             <div class="mt-1 flex gap-1 justify-end">
-              <button class="icon-btn" data-edit-exp="${e.id}">แก้ไข</button>
-              <button class="icon-btn" data-del-exp="${e.id}">ลบ</button>
+              <button class="icon-btn" data-edit-exp="${id??''}" ${disabledAttr}>แก้ไข</button>
+              <button class="icon-btn" data-del-exp="${id??''}" ${disabledAttr}>ลบ</button>
             </div>
           </div>`;
         list.appendChild(row);
@@ -458,15 +462,13 @@
         const r = await apiCall({action, range},{message:`กำลังโหลด${label}…`});
         const arr = unwrapList(r);
         if(arr.length) return arr;
-        // ถ้าได้ object แปลก/ว่าง ลองดึงทั้งหมด
         const r2 = await apiCall({action},{message:`โหลด${label}ทั้งหมด…`});
         return unwrapList(r2);
       }catch(_){
-        const r3 = await apiCall({action},{message:`โหลด${label}ทั้งหมด…`}); // สำรองรอบสุดท้าย
+        const r3 = await apiCall({action},{message:`โหลด${label}ทั้งหมด…`});
         return unwrapList(r3);
       }
     }
-
     async function syncAll(){
       if(syncing) return;
       syncing=true;
@@ -483,9 +485,6 @@
         ]);
         State.sales = salesRaw;
         State.expenses = expensesRaw;
-
-        console.debug('sales (normalized):', State.sales);
-        console.debug('expenses (normalized):', State.expenses);
 
         saveCache();
         renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
@@ -514,10 +513,12 @@
       const del=e.target.closest('[data-del-sale]'); const ed=e.target.closest('[data-edit-sale]');
       if(del){
         const id=del.getAttribute('data-del-sale');
+        if(!id || id==='undefined'){ toast('ไม่พบรหัสรายการขาย', false); return; }
         if(confirm('ลบรายการขายนี้ใช่ไหม?')){ try{ await apiCall({action:'sales_delete', id},{message:'กำลังลบ…'}); toast('ลบแล้ว'); await syncAll(); }catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); } }
       }else if(ed){
         const id=ed.getAttribute('data-edit-sale');
-        const s=State.sales.find(x=>x.id===id); if(!s) return;
+        if(!id || id==='undefined'){ toast('ไม่พบรหัสรายการขาย', false); return; }
+        const s=State.sales.find(x=>String(getId(x))===String(id)); if(!s) return;
         const qtyRaw=prompt('จำนวนใหม่', s.qty); if(qtyRaw===null) return;
         const discountRaw=prompt('ส่วนลดใหม่ (บาท)', s.discount||0); if(discountRaw===null) return;
         const qty=Math.max(1, Number(qtyRaw||1)||1);
@@ -539,23 +540,23 @@
       }catch(e){ toast('บันทึกค่าใช้จ่ายไม่สำเร็จ: '+e.message, false); }
     };
 
-    $('#menuTable').addEventListener('click', async (e)=>{
-      const del=e.target.closest('[data-del-menu]'); const ed=e.target.closest('[data-edit-menu]');
+    $('#expList').addEventListener('click', async (e)=>{
+      const del=e.target.closest('[data-del-exp]'); const ed=e.target.closest('[data-edit-exp]');
       if(del){
-        const id=del.getAttribute('data-del-menu');
-        if(confirm('ลบเมนูนี้? (รายการขายเดิมยังคงอยู่)')){ try{ await apiCall({action:'menus_delete', id},{message:'กำลังลบเมนู…'}); toast('ลบเมนูแล้ว'); await syncAll(); }catch(err){ toast('ลบเมนูไม่สำเร็จ: '+err.message,false); } }
+        const id=del.getAttribute('data-del-exp');
+        if(!id || id==='undefined'){ toast('ไม่พบรหัสค่าใช้จ่าย', false); return; }
+        if(confirm('ลบค่าใช้จ่ายนี้ใช่ไหม?')){ try{ await apiCall({action:'expenses_delete', id},{message:'กำลังลบ…'}); toast('ลบแล้ว'); await syncAll(); }catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); } }
       }else if(ed){
-        const id=ed.getAttribute('data-edit-menu');
-        const m=State.menus.find(x=>x.id===id); if(!m) return;
-        const name=prompt('ชื่อเมนู', m.name); if(name===null) return;
-        const costRaw=prompt('COGS/จาน (บาท)', m.cost); if(costRaw===null) return;
-        const priceRaw=prompt('ราคาขาย (บาท)', m.price); if(priceRaw===null) return;
-        const cost=Math.max(0, Number(costRaw||0)||0);
-        const price=Math.max(0, Number(priceRaw||0)||0);
+        const id=ed.getAttribute('data-edit-exp');
+        if(!id || id==='undefined'){ toast('ไม่พบรหัสค่าใช้จ่าย', false); return; }
+        const x=State.expenses.find(y=>String(getId(y))===String(id)); if(!x) return;
+        const amountRaw=prompt('จำนวนเงินใหม่ (บาท)', x.amount); if(amountRaw===null) return;
+        const note=prompt('หมายเหตุ', x.note||''); if(note===null) return;
+        const amount=Math.max(0, Number(amountRaw||0)||0);
         try{
-          await apiCall({action:'menus_upsert', payload:{ id, name:name.trim()||m.name, cost, price }},{message:'กำลังอัปเดตเมนู…'});
-          toast('อัปเดตเมนูแล้ว'); await syncAll();
-        }catch(err){ toast('อัปเดตเมนูไม่สำเร็จ: '+err.message,false); }
+          await apiCall({action:'expenses_update', id, payload:{ amount, note }},{message:'กำลังอัปเดต…'});
+          toast('อัปเดตแล้ว'); await syncAll();
+        }catch(err){ toast('อัปเดตไม่สำเร็จ: '+err.message,false); }
       }
     });
 
