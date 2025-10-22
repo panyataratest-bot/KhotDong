@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <title>ร้านอาหาร · บัญชีเชื่อม Google Sheets</title>
+  <title>บัญชีร้านอาหาร · (GAS JSONP)</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
   <style>
-    :root{ --bg-from:#f8fafc; --bg-to:#f1f5f9; --card:#ffffff; --line:#e5e7eb; --ink:#0f172a; --muted:#64748b; --primary:#1a1a1a; --accent:#6366f1; --success:#10b981; --danger:#ef4444; --radius:16px }
+    :root{ --bg-from:#f8fafc; --bg-to:#f1f5f9; --card:#fff; --line:#e5e7eb; --ink:#0f172a; --muted:#64748b; --primary:#1a1a1a; --radius:16px; }
     *{ box-sizing:border-box }
     body{ font-family:'Inter',system-ui,-apple-system,Segoe UI,Roboto,sans-serif; color:var(--ink) }
     .bg-app{ background:linear-gradient(180deg,var(--bg-from),var(--bg-to)); min-height:100dvh }
@@ -18,7 +18,6 @@
     .input:focus{ outline:none; border-color:#c7d2fe; box-shadow:0 0 0 4px rgba(99,102,241,.15) }
     .btn{ border-radius:12px; padding:.8rem 1rem; font-weight:600 }
     .btn-primary{ background:var(--primary); color:#fff }
-    .btn-primary:hover{ background:#2a2a2a }
     .btn-ghost{ background:#fff; border:1px solid var(--line) }
     .tab-btn{ border:1px solid var(--line); border-radius:999px; padding:.55rem .9rem; font-weight:600 }
     .tab-btn.active{ background:#111827; color:#fff; border-color:#111827 }
@@ -26,74 +25,41 @@
     .bottom-nav{ position:sticky; bottom:0; z-index:30; background:#fff; border-top:1px solid var(--line); border-top-left-radius:14px; border-top-right-radius:14px }
     .nav-item{ display:flex; flex-direction:column; align-items:center; gap:.3rem; padding:.7rem 0; font-size:.75rem; color:#475569 }
     .nav-item.active{ color:#111827; font-weight:700 }
-    .hide{ display:none !important }
-    .toast{ position:fixed; right:12px; top:12px; background:#111827; color:#fff; padding:.7rem 1rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:50; transform:translateY(-10px); opacity:0; transition:all .22s ease }
-    .toast.show{ transform:translateY(0); opacity:1 }
     .empty{ border:1px dashed var(--line); border-radius:14px; background:#fafafa; padding:1.1rem; color:#6b7280; text-align:center }
     .icon-btn{ padding:.4rem .55rem; border:1px solid var(--line); border-radius:10px; background:#fff }
     .kpi{ display:flex; align-items:center; gap:.9rem }
     .kpi .dot{ width:38px; height:38px; border-radius:12px; display:flex; align-items:center; justify-content:center; background:#f3f4f6 }
-    .no-scrollbar::-webkit-scrollbar{ display:none }
+    .hide{ display:none !important }
+    .toast{ position:fixed; right:12px; top:12px; background:#111827; color:#fff; padding:.7rem 1rem; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,.15); z-index:50; transform:translateY(-10px); opacity:0; transition:all .22s ease }
+    .toast.show{ transform:translateY(0); opacity:1 }
   </style>
-
-  <!--
-    === SPEC ฝั่ง GAS ที่ HTML นี้เรียก ===
-    วิธีใช้งาน: เปิด Apps Script > สร้าง Web App (Deploy) > เลือก "Anyone with the link"
-    ตั้งชีทตามที่ต้องการ แล้วเขียน doPost(e) รองรับ actions ด้านล่าง (ตัวอย่างโครงสร้าง):
-
-    function doPost(e){
-      const req = JSON.parse(e.postData.contents||'{}');
-      const {action, payload, id, range} = req;
-      const ok = (data)=> ContentService.createTextOutput(JSON.stringify({ok:true, data})).setMimeType(ContentService.MimeType.JSON);
-      const err = (msg)=> ContentService.createTextOutput(JSON.stringify({ok:false, error:msg})).setMimeType(ContentService.MimeType.JSON);
-
-      // ตัวอย่าง: อ่าน/เขียนชีท "Menus","Sales","Expenses"
-      // ควรให้ทุกแถวมีคอลัมน์: id, createdAt, updatedAt (+ ฟิลด์เฉพาะ)
-      // ทุกฟังก์ชันคืน {ok, data} ตามที่ HTML นี้คาดหวัง
-      try{
-        if(action==='menus_list'){ /* return array of {id,name,cost,price} */ }
-        if(action==='menus_upsert'){ /* insert or update by name or id */ }
-        if(action==='menus_delete'){ /* delete by id */ }
-
-        if(action==='sales_list'){ /* with range.start, range.end */ }
-        if(action==='sales_create'){ /* payload: {date,menuId,qty,discount,channel} -> return created item */ }
-        if(action==='sales_update'){ /* update by id */ }
-        if(action==='sales_delete'){ /* delete by id */ }
-
-        if(action==='expenses_list'){ /* with range */ }
-        if(action==='expenses_create'){ /* payload: {date,category,amount,note} */ }
-        if(action==='expenses_update'){ /* update by id */ }
-        if(action==='expenses_delete'){ /* delete by id */ }
-
-        return ok([]);
-      }catch(e){ return err(e.message) }
-    }
-  -->
 </head>
 <body class="bg-app">
+  <!-- ===== Toast ===== -->
   <div id="toast" class="toast"></div>
 
+  <!-- ===== Header ===== -->
   <header class="sticky-header">
     <div class="container px-4 py-3 flex items-center justify-between">
-      <div class="font-bold text-lg">บัญชีร้านอาหาร · Google Sheets</div>
+      <div class="font-bold text-lg">บัญชีร้านอาหาร · เชื่อม GAS (JSONP)</div>
       <div class="flex items-center gap-2">
         <button id="syncBtn" class="btn btn-ghost text-sm">ซิงค์ล่าสุด</button>
-        <button id="helpBtn" class="btn btn-ghost text-sm">วิธีเชื่อม</button>
       </div>
     </div>
   </header>
 
+  <!-- ===== Content ===== -->
   <main class="container px-4 pb-28 pt-4">
-    <!-- ฟิลเตอร์ช่วงวันที่ -->
+    <!-- Date filters -->
     <section class="card p-3 mb-4">
-      <div class="flex items-center gap-2 overflow-x-auto no-scrollbar">
-        <button data-range="today" class="tab-btn" id="rToday">วันนี้</button>
-        <button data-range="7d" class="tab-btn" id="r7d">7 วัน</button>
-        <button data-range="month" class="tab-btn active" id="rMonth">เดือนนี้</button>
+      <div class="flex items-center gap-2 overflow-x-auto">
+        <button id="rToday" class="tab-btn">วันนี้</button>
+        <button id="r7d" class="tab-btn">7 วัน</button>
+        <button id="rMonth" class="tab-btn active">เดือนนี้</button>
         <div class="ml-auto flex items-center gap-2">
-          <input id="startDate" type="date" class="input" style="width:auto" />
+          <input id="startDate" type="date" class="input" style="width:auto">
           <span class="text-slate-500">–</span>
-          <input id="endDate" type="date" class="input" style="width:auto" />
+          <input id="endDate" type="date" class="input" style="width:auto">
           <button id="applyRange" class="btn btn-primary text-sm">ดูช่วงนี้</button>
         </div>
       </div>
@@ -116,17 +82,14 @@
           </div>
           <div class="relative" style="height:220px"><canvas id="salesChart"></canvas></div>
         </div>
-
         <div class="card p-3">
           <div class="font-semibold mb-2">Top เมนูขายดี</div>
           <div class="relative" style="height:220px"><canvas id="topMenuChart"></canvas></div>
         </div>
-
         <div class="card p-3">
           <div class="font-semibold mb-2">โครงสร้างต้นทุน</div>
           <div class="relative" style="height:220px"><canvas id="breakdownChart"></canvas></div>
         </div>
-
         <div class="card p-3">
           <div class="font-semibold mb-2">อัตรากำไร</div>
           <div class="grid grid-cols-2 gap-3">
@@ -260,21 +223,9 @@
         </div>
       </div>
     </section>
-
-    <!-- Data / Help -->
-    <section id="page-data" class="space-y-4 hide">
-      <div class="card p-4">
-        <div class="font-semibold mb-2">การเชื่อมต่อ</div>
-        <div class="text-sm text-slate-600">ตั้ง <code>GAS_URL</code> ในโค้ดให้ถูกต้อง แล้วกด “ซิงค์ล่าสุด”</div>
-        <div class="mt-2 text-xs text-slate-500">รองรับ Retry + Timeout, แคชอ่านอย่างปลอดภัย</div>
-      </div>
-      <div class="card p-4">
-        <div class="font-semibold mb-2">เคลียร์แคช (เฉพาะฝั่งเบราว์เซอร์)</div>
-        <button id="clearCache" class="btn" style="background:var(--danger); color:#fff">ลบแคชทั้งหมด</button>
-      </div>
-    </section>
   </main>
 
+  <!-- Bottom Nav -->
   <nav class="bottom-nav">
     <div class="container grid grid-cols-5">
       <button class="nav-item active" data-page="dashboard"><span>📊</span><span>ภาพรวม</span></button>
@@ -286,79 +237,65 @@
   </nav>
 
   <script>
-    // ================== CONFIG ==================
-    // ตั้งค่านี้เป็น Web App URL จาก Apps Script ของคุณ
-    const GAS_URL = 'https://script.google.com/macros/s/AKfycbxXzseyP4qUvBb7_dAN99FE_OhxLmNEsLvzEcElCcfdTwWgetOjhg1MWIjw9QQZ05-6/exec'; // <-- ใส่ของคุณที่นี่
+    /* ================= CONFIG ================= */
+    const GAS_URL = 'https://script.google.com/macros/s/XXXXXXXX/exec'; // <-- ใส่ URL web app ของคุณ
 
-    // ================== Utils ===================
+    /* ================ Utils ================ */
     const THB = new Intl.NumberFormat('th-TH',{style:'currency',currency:'THB',maximumFractionDigits:0});
-    const PCT = (n)=> (isFinite(n) ? (n*100).toFixed(1)+'%' : '0%');
+    const PCT = (n)=> (isFinite(n)? (n*100).toFixed(1)+'%':'0%');
     const iso = (d)=> d.toISOString().slice(0,10);
     const todayStr = ()=> iso(new Date());
-    const uid = ()=> Math.random().toString(36).slice(2,10);
     const $ = (s)=> document.querySelector(s);
     const $$= (s)=> Array.from(document.querySelectorAll(s));
-    function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok ? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
+    function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
 
-    // ================== Safe Fetch (Retry/Timeout) ==================
-    async function apiCall(body, {retries=1, timeoutMs=10000} = {}){
-      if(!GAS_URL || GAS_URL.includes('XXXXXXXX')){ toast('ยังไม่ตั้งค่า GAS_URL', false); throw new Error('GAS_URL not set'); }
-      for(let attempt=0; attempt<=retries; attempt++){
-        const ctrl = new AbortController();
-        const t = setTimeout(()=>ctrl.abort(), timeoutMs);
+    /* ============== JSONP ONLY API ============== */
+    function apiCall(body){
+      if(!GAS_URL || GAS_URL.includes('XXXXXXXX')) return Promise.reject(new Error('ยังไม่ได้ตั้งค่า GAS_URL'));
+      return new Promise((resolve,reject)=>{
         try{
-          const res = await fetch(GAS_URL, {
-            method:'POST',
-            headers:{'Content-Type':'application/json'},
-            body: JSON.stringify(body),
-            signal: ctrl.signal
-          });
-          clearTimeout(t);
-          const json = await res.json();
-          if(!json.ok) throw new Error(json.error||'API error');
-          return json.data;
-        }catch(err){
-          clearTimeout(t);
-          if(attempt===retries){ throw err; }
-          await new Promise(r=>setTimeout(r, 600)); // backoff เล็กน้อย
-        }
-      }
+          const cb = 'cb_' + Math.random().toString(36).slice(2,9);
+          window[cb] = (resp)=>{
+            try{
+              delete window[cb];
+              s.remove();
+              if(!resp || !resp.ok) return reject(new Error((resp && resp.error) || 'JSONP error'));
+              resolve(resp.data);
+            }catch(e){ reject(e); }
+          };
+          const p = new URLSearchParams();
+          p.set('action', body.action);
+          if(body.id) p.set('id', body.id);
+          if(body.range && body.range.start && body.range.end){
+            p.set('rangeStart', body.range.start);
+            p.set('rangeEnd', body.range.end);
+          }
+          if(body.payload) p.set('payload', JSON.stringify(body.payload));
+          p.set('callback', cb);
+
+          const s = document.createElement('script');
+          s.src = GAS_URL + '?' + p.toString();
+          s.onerror = ()=>{ delete window[cb]; s.remove(); reject(new Error('JSONP load error')) };
+          document.body.appendChild(s);
+        }catch(e){ reject(e); }
+      });
     }
 
-    // ================== State (Cache อ่าน) ==================
+    /* ============== State (แคชอ่าน) ============== */
     const CACHE_KEY = 'foodacc_cache_v2';
-    const State = {
-      menus: [],
-      sales: [],
-      expenses: [],
-      settings: { activePage:'dashboard', range:'month', start:null, end:null }
-    };
-    function loadCache(){
-      const raw = localStorage.getItem(CACHE_KEY);
-      if(raw){
-        try{ Object.assign(State, JSON.parse(raw)); }catch(e){ localStorage.removeItem(CACHE_KEY); }
-      } else {
-        // seed minimal
-        State.settings.start = iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-        State.settings.end   = todayStr();
-      }
-    }
+    const State = { menus:[], sales:[], expenses:[], settings:{activePage:'dashboard', range:'month', start:null, end:null} };
+    function loadCache(){ const raw=localStorage.getItem(CACHE_KEY); if(raw){ try{ Object.assign(State, JSON.parse(raw)); }catch(e){} } }
     function saveCache(){ localStorage.setItem(CACHE_KEY, JSON.stringify(State)); }
 
-    // ================== Date Range ==================
+    /* ============== Date Range & Helpers ============== */
     function setQuickRange(type){
-      const now = new Date();
-      let start, end = new Date();
+      const now=new Date(); let start,end=new Date();
       if(type==='today') start = new Date();
-      else if(type==='7d'){ start = new Date(); start.setDate(now.getDate()-6) }
-      else{ start = new Date(now.getFullYear(), now.getMonth(), 1) }
-      $('#startDate').value = iso(start);
-      $('#endDate').value = iso(end);
-      State.settings.range = type;
-      State.settings.start = $('#startDate').value;
-      State.settings.end   = $('#endDate').value;
-      saveCache();
-      syncAll(); // รีเฟรชจากเซิร์ฟเวอร์ตามช่วงที่เลือก
+      else if(type==='7d'){ start=new Date(); start.setDate(now.getDate()-6); }
+      else start = new Date(now.getFullYear(), now.getMonth(), 1);
+      $('#startDate').value = iso(start); $('#endDate').value = iso(end);
+      State.settings.range=type; State.settings.start=$('#startDate').value; State.settings.end=$('#endDate').value; saveCache();
+      syncAll();
     }
     function inRange(dateStr){
       const s = new Date(State.settings.start||todayStr());
@@ -367,71 +304,50 @@
       return d>=s && d<=e;
     }
 
-    // ================== Charts (no infinite growth) ==================
+    /* ============== Charts (bounded scale) ============== */
     let charts = { sales:null, top:null, breakdown:null };
-    function destroyChart(refName){ if(charts[refName]){ charts[refName].destroy(); charts[refName]=null; } }
-    function boundedMax(arr){
-      const max = Math.max(0, ...arr);
-      if(max===0) return 100; // baseline เงียบๆ
-      // ป้องกันสเกลพองไม่หยุด: ปัดค่าขึ้นเล็กน้อยไม่ใช้ค่าเก่า
-      const mag = Math.pow(10, Math.floor(Math.log10(max)));
-      const rounded = Math.ceil(max / mag) * mag;
-      return Math.min(rounded * 1.15, max*1.5); // กันกระโดดเกินจริง
-    }
-    function lineChart(canvasId, labels, data){
+    const destroyChart = (k)=>{ if(charts[k]){ charts[k].destroy(); charts[k]=null; } };
+    const boundedMax = (arr)=>{ const m = Math.max(0,...arr); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
+    function lineChart(id, labels, data){
       destroyChart('sales');
-      const ctx = $(canvasId).getContext('2d');
-      charts.sales = new Chart(ctx,{
+      charts.sales = new Chart($(id).getContext('2d'), {
         type:'line',
-        data:{ labels, datasets:[{ label:'ยอดขายรายวัน', data, tension:.25, pointRadius:2 }]},
-        options:{
-          responsive:true, maintainAspectRatio:false, animation:false,
-          parsing:false, normalized:true,
-          scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } },
-          plugins:{ legend:{ display:false } }
-        }
+        data:{ labels, datasets:[{ label:'ยอดขายรายวัน', data, tension:.25, pointRadius:2 }] },
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
       });
     }
-    function barChart(canvasId, labels, data){
+    function barChart(id, labels, data){
       destroyChart('top');
-      const ctx=$(canvasId).getContext('2d');
-      charts.top = new Chart(ctx,{
+      charts.top = new Chart($(id).getContext('2d'), {
         type:'bar',
-        data:{ labels, datasets:[{ label:'จำนวนที่ขาย', data }]},
-        options:{
-          responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true,
-          scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } },
-          plugins:{ legend:{ display:false } }
-        }
+        data:{ labels, datasets:[{ label:'จำนวนที่ขาย', data }] },
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
       });
     }
-    function doughnutChart(canvasId, labels, data){
+    function doughnutChart(id, labels, data){
       destroyChart('breakdown');
-      const ctx=$(canvasId).getContext('2d');
-      charts.breakdown = new Chart(ctx,{
+      charts.breakdown = new Chart($(id).getContext('2d'), {
         type:'doughnut',
-        data:{ labels, datasets:[{ data }]},
+        data:{ labels, datasets:[{ data }] },
         options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{ position:'bottom' } } }
       });
     }
 
-    // ================== Render ==================
+    /* ============== Render ============== */
     function computeSummary(){
-      const sales = State.sales.filter(s=>inRange(s.date));
-      const exps  = State.expenses.filter(e=>inRange(e.date));
-      let salesTotal=0, cogsTotal=0;
-      const perDay={}, perMenu={};
+      const sales=State.sales.filter(s=>inRange(s.date));
+      const exps =State.expenses.filter(e=>inRange(e.date));
+      let salesTotal=0, cogsTotal=0; const perDay={}, perMenu={};
       for(const s of sales){
         const m = State.menus.find(x=>x.id===s.menuId);
-        const price = m? m.price:0, cost = m? m.cost:0;
-        const gross = price*(s.qty||0) - (s.discount||0);
-        const cogs  = cost*(s.qty||0);
-        salesTotal += gross; cogsTotal += cogs;
-        perDay[s.date] = (perDay[s.date]||0) + gross;
-        const name = m? m.name:'(ลบเมนูแล้ว)';
-        perMenu[name] = (perMenu[name]||0) + (s.qty||0);
+        const price=m? m.price:0, cost=m? m.cost:0;
+        const gross=price*(s.qty||0) - (s.discount||0);
+        const cogs =cost*(s.qty||0);
+        salesTotal+=gross; cogsTotal+=cogs;
+        perDay[s.date]=(perDay[s.date]||0)+gross;
+        const name=m? m.name:'(ลบเมนูแล้ว)'; perMenu[name]=(perMenu[name]||0)+(s.qty||0);
       }
-      const expTotal = exps.reduce((a,b)=> a + Number(b.amount||0), 0);
+      const expTotal = exps.reduce((a,b)=>a+Number(b.amount||0),0);
       const grossProfit = salesTotal - cogsTotal;
       const netProfit   = grossProfit - expTotal;
       return { salesTotal, cogsTotal, grossProfit, expTotal, netProfit, perDay, perMenu };
@@ -440,40 +356,33 @@
       $('#startDate').value = State.settings.start || todayStr();
       $('#endDate').value   = State.settings.end   || todayStr();
       $$('.tab-btn').forEach(b=> b.classList.remove('active'));
-      const r = State.settings.range || 'month';
-      (r==='today'?$('#rToday'):r==='7d'?$('#r7d'):$('#rMonth')).classList.add('active');
+      const r=State.settings.range||'month'; (r==='today'?$('#rToday'):r==='7d'?$('#r7d'):$('#rMonth')).classList.add('active');
 
       const { salesTotal, cogsTotal, grossProfit, expTotal, netProfit, perDay, perMenu } = computeSummary();
       $('#kpiSales').textContent = THB.format(salesTotal);
-      $('#kpiCogs').textContent = THB.format(cogsTotal);
+      $('#kpiCogs').textContent  = THB.format(cogsTotal);
       $('#kpiGross').textContent = THB.format(grossProfit);
-      $('#kpiNet').textContent = THB.format(netProfit);
-      $('#kpiCogsPct').textContent = PCT(salesTotal? cogsTotal/salesTotal : 0);
-      $('#kpiNetPct').textContent  = PCT(salesTotal? netProfit/salesTotal : 0);
+      $('#kpiNet').textContent   = THB.format(netProfit);
+      $('#kpiCogsPct').textContent = PCT(salesTotal? cogsTotal/salesTotal:0);
+      $('#kpiNetPct').textContent  = PCT(salesTotal? netProfit/salesTotal:0);
 
-      const days = Object.keys(perDay).sort();
-      const vals = days.map(d=> perDay[d]);
-      $('#salesEmpty').classList.toggle('hidden', days.length>0);
-      lineChart('#salesChart', days, vals);
-
-      const menuNames = Object.keys(perMenu);
-      const menuQtys  = menuNames.map(k=> perMenu[k]);
-      barChart('#topMenuChart', menuNames, menuQtys);
-
+      const days=Object.keys(perDay).sort(); const vals=days.map(d=>perDay[d]);
+      $('#salesEmpty').classList.toggle('hidden', days.length>0); lineChart('#salesChart', days, vals);
+      const menuNames=Object.keys(perMenu); const menuQtys=menuNames.map(k=>perMenu[k]); barChart('#topMenuChart', menuNames, menuQtys);
       doughnutChart('#breakdownChart', ['COGS','ค่าใช้จ่ายอื่น','กำไรสุทธิ'], [cogsTotal, expTotal, Math.max(netProfit,0)]);
     }
     function renderSalesList(){
-      const list = $('#salesList'); list.innerHTML='';
-      const sorted = [...State.sales].sort((a,b)=> b.date.localeCompare(a.date));
-      if(!sorted.length){ list.innerHTML = `<div class="empty">ยังไม่มีรายการขาย</div>`; $('#salesCount').textContent='0 รายการ'; return; }
+      const list=$('#salesList'); list.innerHTML='';
+      const sorted=[...State.sales].sort((a,b)=> b.date.localeCompare(a.date));
+      if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีรายการขาย</div>`; $('#salesCount').textContent='0 รายการ'; return; }
       sorted.slice(0,80).forEach(s=>{
-        const m = State.menus.find(x=>x.id===s.menuId);
-        const price = m? m.price:0, cost=m?m.cost:0;
-        const gross = price*(s.qty||0) - (s.discount||0);
-        const profit = gross - cost*(s.qty||0);
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between border-b py-2';
-        row.innerHTML = `
+        const m=State.menus.find(x=>x.id===s.menuId);
+        const price=m?m.price:0, cost=m?m.cost:0;
+        const gross=price*(s.qty||0)-(s.discount||0);
+        const profit=gross-cost*(s.qty||0);
+        const row=document.createElement('div');
+        row.className='flex items-center justify-between border-b py-2';
+        row.innerHTML=`
           <div>
             <div class="font-semibold">${m? m.name:'(เมนูถูกลบ)'}</div>
             <div class="text-xs text-slate-500">${s.date} · ${s.channel||'-'} · x${s.qty||0} · ส่วนลด ${THB.format(s.discount||0)}</div>
@@ -491,13 +400,13 @@
       $('#salesCount').textContent = `${State.sales.length} รายการ`;
     }
     function renderExpList(){
-      const list = $('#expList'); list.innerHTML='';
-      const sorted = [...State.expenses].sort((a,b)=> b.date.localeCompare(a.date));
-      if(!sorted.length){ list.innerHTML = `<div class="empty">ยังไม่มีค่าใช้จ่าย</div>`; $('#expCount').textContent='0 รายการ'; return; }
+      const list=$('#expList'); list.innerHTML='';
+      const sorted=[...State.expenses].sort((a,b)=> b.date.localeCompare(a.date));
+      if(!sorted.length){ list.innerHTML=`<div class="empty">ยังไม่มีค่าใช้จ่าย</div>`; $('#expCount').textContent='0 รายการ'; return; }
       sorted.slice(0,80).forEach(e=>{
-        const row = document.createElement('div');
-        row.className = 'flex items-center justify-between border-b py-2';
-        row.innerHTML = `
+        const row=document.createElement('div');
+        row.className='flex items-center justify-between border-b py-2';
+        row.innerHTML=`
           <div>
             <div class="font-semibold">${e.category}</div>
             <div class="text-xs text-slate-500">${e.date}${e.note? ' · '+e.note:''}</div>
@@ -514,12 +423,12 @@
       $('#expCount').textContent = `${State.expenses.length} รายการ`;
     }
     function renderMenu(){
-      const tb = $('#menuTable'); tb.innerHTML='';
+      const tb=$('#menuTable'); tb.innerHTML='';
       if(!State.menus.length){ tb.innerHTML = `<tr><td colspan="5"><div class="empty">ยังไม่มีเมนู</div></td></tr>`; return; }
       State.menus.forEach(m=>{
-        const p = (m.price||0)-(m.cost||0);
-        const tr = document.createElement('tr');
-        tr.innerHTML = `
+        const p=(m.price||0)-(m.cost||0);
+        const tr=document.createElement('tr');
+        tr.innerHTML=`
           <td class="py-2 pr-2">${m.name}</td>
           <td class="py-2 pr-2">${THB.format(m.cost||0)}</td>
           <td class="py-2 pr-2">${THB.format(m.price||0)}</td>
@@ -530,26 +439,21 @@
           </td>`;
         tb.appendChild(tr);
       });
-      // เติม dropdown เมนูของ Sales
-      const sel = $('#saleMenu'); sel.innerHTML='';
-      State.menus.forEach(m=>{
-        const op = document.createElement('option'); op.value=m.id; op.textContent=m.name; sel.appendChild(op);
-      });
+      const sel=$('#saleMenu'); sel.innerHTML='';
+      State.menus.forEach(m=>{ const op=document.createElement('option'); op.value=m.id; op.textContent=m.name; sel.appendChild(op); });
     }
 
-    // ================== Sync (Server <-> Cache) ==================
+    /* ============== Sync ============== */
     async function syncAll(){
       try{
         const range = { start: $('#startDate').value || State.settings.start || todayStr(),
-                        end: $('#endDate').value   || State.settings.end   || todayStr() };
-        // ดึงเมนู
+                        end:   $('#endDate').value   || State.settings.end   || todayStr() };
         const menus = await apiCall({action:'menus_list'});
-        State.menus = Array.isArray(menus)? menus: [];
-        // ดึงขาย/จ่ายตามช่วง
         const [sales, expenses] = await Promise.all([
           apiCall({action:'sales_list', range}),
           apiCall({action:'expenses_list', range})
         ]);
+        State.menus = Array.isArray(menus)? menus: [];
         State.sales = Array.isArray(sales)? sales: [];
         State.expenses = Array.isArray(expenses)? expenses: [];
         saveCache();
@@ -557,14 +461,13 @@
         toast('ซิงค์ข้อมูลสำเร็จ');
       }catch(e){
         toast('ซิงค์ไม่สำเร็จ: '+e.message, false);
-        // ใช้แคชต่อไป
         renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
       }
     }
 
-    // ================== Actions (Create/Update/Delete) ==================
-    // Sales
-    $('#addSale').addEventListener('click', async ()=>{
+    /* ============== Actions ============== */
+    // Sales CRUD
+    $('#addSale').onclick = async ()=>{
       try{
         const payload = {
           date: $('#saleDate').value || todayStr(),
@@ -573,32 +476,29 @@
           discount: Math.max(0, Number($('#saleDiscount').value||0)),
           channel: $('#saleChannel').value || 'หน้าร้าน'
         };
-        await apiCall({action:'sales_create', payload},{retries:1});
+        await apiCall({action:'sales_create', payload});
         toast('บันทึกยอดขายแล้ว'); await syncAll();
       }catch(e){ toast('บันทึกยอดขายไม่สำเร็จ: '+e.message, false); }
-    });
+    };
     $('#salesList').addEventListener('click', async (e)=>{
-      const del = e.target.closest('[data-del-sale]'); const ed = e.target.closest('[data-edit-sale]');
+      const del=e.target.closest('[data-del-sale]'); const ed=e.target.closest('[data-edit-sale]');
       if(del){
-        const id = del.getAttribute('data-del-sale');
-        if(confirm('ลบรายการขายนี้ใช่ไหม?')){
-          try{ await apiCall({action:'sales_delete', id}); toast('ลบแล้ว'); await syncAll(); }
-          catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); }
-        }
+        const id=del.getAttribute('data-del-sale');
+        if(confirm('ลบรายการขายนี้ใช่ไหม?')){ try{ await apiCall({action:'sales_delete', id}); toast('ลบแล้ว'); await syncAll(); }catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); } }
       }else if(ed){
-        const id = ed.getAttribute('data-edit-sale');
-        const s = State.sales.find(x=>x.id===id); if(!s) return;
-        const qty = prompt('จำนวนใหม่', s.qty); if(qty===null) return;
-        const discount = prompt('ส่วนลดใหม่ (บาท)', s.discount||0); if(discount===null) return;
+        const id=ed.getAttribute('data-edit-sale');
+        const s=State.sales.find(x=>x.id===id); if(!s) return;
+        const qty=prompt('จำนวนใหม่', s.qty); if(qty===null) return;
+        const discount=prompt('ส่วนลดใหม่ (บาท)', s.discount||0); if(discount===null) return;
         try{
           await apiCall({action:'sales_update', id, payload:{ qty:Math.max(1,Number(qty||1)), discount:Math.max(0,Number(discount||0)) }});
-          toast('อัปเดตรายการขายแล้ว'); await syncAll();
+          toast('อัปเดตแล้ว'); await syncAll();
         }catch(err){ toast('อัปเดตไม่สำเร็จ: '+err.message,false); }
       }
     });
 
-    // Expenses
-    $('#addExp').addEventListener('click', async ()=>{
+    // Expenses CRUD
+    $('#addExp').onclick = async ()=>{
       try{
         const payload = {
           date: $('#expDate').value || todayStr(),
@@ -606,56 +506,50 @@
           amount: Math.max(0, Number($('#expAmt').value||0)),
           note: $('#expNote').value || ''
         };
-        await apiCall({action:'expenses_create', payload},{retries:1});
+        await apiCall({action:'expenses_create', payload});
         toast('บันทึกค่าใช้จ่ายแล้ว'); await syncAll();
       }catch(e){ toast('บันทึกค่าใช้จ่ายไม่สำเร็จ: '+e.message, false); }
-    });
+    };
     $('#expList').addEventListener('click', async (e)=>{
-      const del = e.target.closest('[data-del-exp]'); const ed = e.target.closest('[data-edit-exp]');
+      const del=e.target.closest('[data-del-exp]'); const ed=e.target.closest('[data-edit-exp]');
       if(del){
-        const id = del.getAttribute('data-del-exp');
-        if(confirm('ลบค่าใช้จ่ายนี้ใช่ไหม?')){
-          try{ await apiCall({action:'expenses_delete', id}); toast('ลบแล้ว'); await syncAll(); }
-          catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); }
-        }
+        const id=del.getAttribute('data-del-exp');
+        if(confirm('ลบค่าใช้จ่ายนี้ใช่ไหม?')){ try{ await apiCall({action:'expenses_delete', id}); toast('ลบแล้ว'); await syncAll(); }catch(err){ toast('ลบไม่สำเร็จ: '+err.message,false); } }
       }else if(ed){
-        const id = ed.getAttribute('data-edit-exp');
-        const x = State.expenses.find(y=>y.id===id); if(!x) return;
-        const amount = prompt('จำนวนเงินใหม่ (บาท)', x.amount); if(amount===null) return;
-        const note = prompt('หมายเหตุ', x.note||''); if(note===null) return;
+        const id=ed.getAttribute('data-edit-exp');
+        const x=State.expenses.find(y=>y.id===id); if(!x) return;
+        const amount=prompt('จำนวนเงินใหม่ (บาท)', x.amount); if(amount===null) return;
+        const note=prompt('หมายเหตุ', x.note||''); if(note===null) return;
         try{
           await apiCall({action:'expenses_update', id, payload:{ amount:Math.max(0,Number(amount||0)), note }});
-          toast('อัปเดตค่าใช้จ่ายแล้ว'); await syncAll();
+          toast('อัปเดตแล้ว'); await syncAll();
         }catch(err){ toast('อัปเดตไม่สำเร็จ: '+err.message,false); }
       }
     });
 
-    // Menus
-    $('#addMenu').addEventListener('click', async ()=>{
-      const name = ($('#menuName').value||'').trim();
-      const cost = Math.max(0, Number($('#menuCost').value||0));
-      const price= Math.max(0, Number($('#menuPrice').value||0));
+    // Menus CRUD
+    $('#addMenu').onclick = async ()=>{
+      const name=($('#menuName').value||'').trim();
+      const cost=Math.max(0, Number($('#menuCost').value||0));
+      const price=Math.max(0, Number($('#menuPrice').value||0));
       if(!name){ toast('กรุณาใส่ชื่อเมนู', false); return; }
       try{
         await apiCall({action:'menus_upsert', payload:{ name, cost, price }});
         toast('บันทึกเมนูแล้ว'); $('#menuName').value=''; $('#menuCost').value=''; $('#menuPrice').value='';
         await syncAll();
       }catch(e){ toast('บันทึกเมนูไม่สำเร็จ: '+e.message,false); }
-    });
+    };
     $('#menuTable').addEventListener('click', async (e)=>{
-      const del = e.target.closest('[data-del-menu]'); const ed = e.target.closest('[data-edit-menu]');
+      const del=e.target.closest('[data-del-menu]'); const ed=e.target.closest('[data-edit-menu]');
       if(del){
-        const id = del.getAttribute('data-del-menu');
-        if(confirm('ลบเมนูนี้? (รายการขายเดิมยังคงอยู่)')){
-          try{ await apiCall({action:'menus_delete', id}); toast('ลบเมนูแล้ว'); await syncAll(); }
-          catch(err){ toast('ลบเมนูไม่สำเร็จ: '+err.message,false); }
-        }
+        const id=del.getAttribute('data-del-menu');
+        if(confirm('ลบเมนูนี้? (รายการขายเดิมยังคงอยู่)')){ try{ await apiCall({action:'menus_delete', id}); toast('ลบเมนูแล้ว'); await syncAll(); }catch(err){ toast('ลบเมนูไม่สำเร็จ: '+err.message,false); } }
       }else if(ed){
-        const id = ed.getAttribute('data-edit-menu');
-        const m = State.menus.find(x=>x.id===id); if(!m) return;
-        const name = prompt('ชื่อเมนู', m.name); if(name===null) return;
-        const cost = prompt('COGS/จาน (บาท)', m.cost); if(cost===null) return;
-        const price= prompt('ราคาขาย (บาท)', m.price); if(price===null) return;
+        const id=ed.getAttribute('data-edit-menu');
+        const m=State.menus.find(x=>x.id===id); if(!m) return;
+        const name=prompt('ชื่อเมนู', m.name); if(name===null) return;
+        const cost=prompt('COGS/จาน (บาท)', m.cost); if(cost===null) return;
+        const price=prompt('ราคาขาย (บาท)', m.price); if(price===null) return;
         try{
           await apiCall({action:'menus_upsert', payload:{ id, name:name.trim()||m.name, cost:Math.max(0,Number(cost||0)), price:Math.max(0,Number(price||0)) }});
           toast('อัปเดตเมนูแล้ว'); await syncAll();
@@ -663,54 +557,35 @@
       }
     });
 
-    // ================== Nav & Events ==================
+    /* ============== Nav & Events ============== */
     function switchPage(p){
-      ['dashboard','sales','expenses','menu','data'].forEach(x=>{
-        document.getElementById('page-'+x).classList.toggle('hide', x!==p);
-      });
+      ['dashboard','sales','expenses','menu','data'].forEach(x=> document.getElementById('page-'+x)?.classList.toggle('hide', x!==p));
       $$('.nav-item').forEach(i=> i.classList.toggle('active', i.getAttribute('data-page')===p));
-      State.settings.activePage = p; saveCache();
-      if(p==='dashboard') renderDashboard();
-      if(p==='sales')    renderSalesList();
-      if(p==='expenses') renderExpList();
-      if(p==='menu')     renderMenu();
+      State.settings.activePage=p; saveCache();
+      if(p==='dashboard') renderDashboard(); if(p==='sales') renderSalesList(); if(p==='expenses') renderExpList(); if(p==='menu') renderMenu();
     }
     $$('.nav-item').forEach(b=> b.addEventListener('click', ()=> switchPage(b.getAttribute('data-page')) ));
-
-    // Date range buttons
     $('#rToday').onclick = ()=> setQuickRange('today');
     $('#r7d').onclick    = ()=> setQuickRange('7d');
     $('#rMonth').onclick = ()=> setQuickRange('month');
     $('#applyRange').onclick = ()=>{ State.settings.range='custom'; State.settings.start=$('#startDate').value||todayStr(); State.settings.end=$('#endDate').value||todayStr(); saveCache(); syncAll(); };
-
-    // Top buttons
     $('#syncBtn').onclick = ()=> syncAll();
-    $('#helpBtn').onclick = ()=> alert('เปิดไฟล์ > แก้ค่าตัวแปร GAS_URL ให้เป็น Web App URL จาก Apps Script (Deploy as web app: Anyone with the link)\nโครงสร้าง action ดูในคอมเมนต์ส่วนบนของไฟล์นี้');
 
-    // Data / Cache page
-    $('#clearCache').onclick = ()=>{ if(confirm('ลบแคชทั้งหมด?')){ localStorage.removeItem(CACHE_KEY); location.reload(); } };
-
-    // ================== Init ==================
+    /* ============== Init ============== */
     loadCache();
-    // default date range if empty
     if(!State.settings.start || !State.settings.end){
       State.settings.start = iso(new Date(new Date().getFullYear(), new Date().getMonth(), 1));
-      State.settings.end   = todayStr();
-      saveCache();
+      State.settings.end   = todayStr(); saveCache();
     }
-    $('#saleDate').value = todayStr();
-    $('#expDate').value  = todayStr();
+    $('#saleDate').value = todayStr(); $('#expDate').value = todayStr();
     switchPage(State.settings.activePage || 'dashboard');
     renderDashboard(); renderSalesList(); renderExpList(); renderMenu();
 
-    // เดบาวซ์ป้องกันกราฟพองจาก resize ซ้ำๆ
+    // debounce resize → ป้องกันกราฟพอง
     let resizeTimer=null;
-    window.addEventListener('resize', ()=>{
-      clearTimeout(resizeTimer);
-      resizeTimer = setTimeout(()=> renderDashboard(), 150);
-    });
+    window.addEventListener('resize', ()=>{ clearTimeout(resizeTimer); resizeTimer=setTimeout(()=>renderDashboard(),150); });
 
-    // ดึงข้อมูลจริงหากตั้งค่า GAS_URL แล้ว
+    // ดึงข้อมูลจากเซิร์ฟเวอร์ทันที
     (async()=>{ if(GAS_URL && !GAS_URL.includes('XXXXXXXX')) await syncAll(); })();
   </script>
 </body>
