@@ -258,15 +258,22 @@
     const $$= (s)=> Array.from(document.querySelectorAll(s));
     function toast(msg, ok=true){ const t=$('#toast'); t.textContent=msg; t.style.background= ok? '#111827':'#b91c1c'; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'), 1800); }
 
+    // ตั้งค่า default สีของแกน/กริด ให้ตัดกับพื้นหลัง
+    if (window.Chart) {
+      Chart.defaults.color = '#334155';     // สีตัวเลขแกน
+      Chart.defaults.borderColor = '#e5e7eb'; // สีเส้นกริด
+    }
+
     const parseISODate = (s)=> new Date(String(s).slice(0,10)+'T12:00:00');
 
     function unwrapList(v){
       if(Array.isArray(v)) return v;
       if(!v || typeof v!=='object') return [];
-      for(const k of ['rows','items','values','data','sales','list']){ if(Array.isArray(v[k])) return v[k]; }
+      for(const k of ['menus','menu','expenses','expense','rows','items','values','data','sales','list']){ if(Array.isArray(v[k])) return v[k]; }
+      // fallback: คืนอาเรย์ตัวแรกที่เจอ
+      for(const k of Object.keys(v)){ if(Array.isArray(v[k])) return v[k]; }
       return [];
     }
-    // ดึง id จากหลายรูปแบบชื่อคีย์
     const getId = (o)=> o?.id ?? o?.ID ?? o?.expenseId ?? o?.expenseid ?? o?._id ?? o?.uuid ?? o?.Id ?? null;
 
     const Loader = {
@@ -325,9 +332,38 @@
     let charts={ sales:null, top:null, breakdown:null };
     const destroyChart=(k)=>{ if(charts[k]){ try{charts[k].destroy();}catch(_){ } charts[k]=null; } };
     const boundedMax=(arr)=>{ const nums=(arr||[]).map(n=>Number(n)||0); const m=Math.max(0,...nums); if(m===0) return 100; const mag=Math.pow(10,Math.floor(Math.log10(m))); return Math.min(Math.ceil(m/mag)*mag*1.15, m*1.5); };
-    function lineChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('sales'); charts.sales=new Chart(cv.getContext('2d'),{type:'line',data:{labels,datasets:[{label:'ยอดขายรายวัน',data,tension:.25,pointRadius:2}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
-    function barChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('top'); charts.top=new Chart(cv.getContext('2d'),{type:'bar',data:{labels,datasets:[{label:'จำนวนที่ขาย',data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,parsing:false,normalized:true,scales:{y:{beginAtZero:true,suggestedMax:boundedMax(data)}},plugins:{legend:{display:false}}}}); }
-    function doughnutChart(sel,labels,data){ const cv=$(sel); if(!cv||!window.Chart) return; destroyChart('breakdown'); charts.breakdown=new Chart(cv.getContext('2d'),{type:'doughnut',data:{labels,datasets:[{data}]},options:{responsive:true,maintainAspectRatio:false,animation:false,plugins:{legend:{position:'bottom'}}}}); }
+
+    // กำหนดสีให้ dataset ชัดเจน
+    const COLOR_MAIN = '#111827'; // slate-900
+    const COLOR_FILL = 'rgba(17,24,39,0.15)';
+
+    function lineChart(sel,labels,data){
+      const cv=$(sel); if(!cv||!window.Chart) return;
+      destroyChart('sales');
+      charts.sales=new Chart(cv.getContext('2d'),{
+        type:'line',
+        data:{ labels, datasets:[{ label:'ยอดขายรายวัน', data:data.map(n=>+n||0), tension:.25, pointRadius:3, fill:false, borderColor:COLOR_MAIN, pointBackgroundColor:COLOR_MAIN }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
+      });
+    }
+    function barChart(sel,labels,data){
+      const cv=$(sel); if(!cv||!window.Chart) return;
+      destroyChart('top');
+      charts.top=new Chart(cv.getContext('2d'),{
+        type:'bar',
+        data:{ labels, datasets:[{ label:'จำนวนที่ขาย', data:data.map(n=>+n||0), backgroundColor:COLOR_MAIN }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, parsing:false, normalized:true, scales:{ y:{ beginAtZero:true, suggestedMax: boundedMax(data) } }, plugins:{ legend:{ display:false } } }
+      });
+    }
+    function doughnutChart(sel,labels,data){
+      const cv=$(sel); if(!cv||!window.Chart) return;
+      destroyChart('breakdown');
+      charts.breakdown=new Chart(cv.getContext('2d'),{
+        type:'doughnut',
+        data:{ labels, datasets:[{ data:data.map(n=>+n||0), backgroundColor:[COLOR_FILL,'#d1d5db','#a7f3d0'] }]},
+        options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{ legend:{ position:'bottom' } } }
+      });
+    }
 
     /* ============== Render ============== */
     function computeSummary(){
